@@ -9,6 +9,7 @@ const CloudDB = {
 
     init() {
         this.loadSettings();
+        this.ensureAllSyncCodes();
         this.updateHeaderBadge();
         // Check internet connectivity
         window.addEventListener('online', () => {
@@ -20,6 +21,35 @@ const CloudDB = {
             this.syncStatus = 'offline';
             this.updateHeaderBadge();
         });
+    },
+
+    ensureSyncCode(student) {
+        if (!student) return null;
+        if (!student.syncCode) {
+            student.syncCode = this.generateSyncCode();
+            if (typeof updateStudent === 'function') {
+                updateStudent(student);
+            }
+        }
+        return student.syncCode;
+    },
+
+    ensureAllSyncCodes() {
+        try {
+            if (typeof allStudents === 'function') {
+                const list = allStudents();
+                let changed = false;
+                list.forEach(s => {
+                    if (!s.syncCode) {
+                        s.syncCode = this.generateSyncCode();
+                        changed = true;
+                    }
+                });
+                if (changed && typeof saveStudents === 'function') {
+                    saveStudents(list);
+                }
+            }
+        } catch (e) {}
     },
 
     loadSettings() {

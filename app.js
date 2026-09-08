@@ -49,7 +49,16 @@ function saveStudents(arr) {
   localStorage.setItem('oa_students', JSON.stringify(arr)); 
   if (typeof AppDB !== 'undefined' && AppDB.saveAllStudents) AppDB.saveAllStudents(arr);
 }
-function getStudent(id) { return allStudents().find(s=>s.id===id)||null; }
+function getStudent(id) { 
+  const list = allStudents();
+  const s = list.find(x => x.id === id) || null; 
+  if (s && !s.syncCode) {
+    s.syncCode = (typeof CloudDB !== 'undefined' && CloudDB.generateSyncCode) ? CloudDB.generateSyncCode() : ('OKUL-' + Math.random().toString(36).substring(2,7).toUpperCase());
+    const idx = list.findIndex(x => x.id === s.id);
+    if (idx !== -1) { list[idx] = s; saveStudents(list); }
+  }
+  return s; 
+}
 function getActs() { const s=curStudent(); return s?(s.activities&&s.activities.length?s.activities:[...DEFAULT_ACTIVITIES]):[...DEFAULT_ACTIVITIES]; }
 function saveActs(arr) { const s=curStudent();if(!s)return;s.activities=arr;updateStudent(s); }
 function curStudent() { return CUR_ID ? getStudent(CUR_ID) : null; }
@@ -178,10 +187,12 @@ function doRegister() {
   const students=allStudents();
   if(students.find(s=>s.name.toLowerCase()===name.toLowerCase())){showErr('❗ Bu isimde öğrenci var!');return;}
   const subjects=DEFAULT_SUBJECTS.map(s=>({id:uid(),name:s.name,emoji:s.emoji,color:s.color,teacher:''}));
-  const newStudent = {id:uid(),name,avatar:_regAv,grade,password:pw||'',subjects,schedule:emptySchedule(),homework:[],exams:[],notes:[],practice:[],activities:[...DEFAULT_ACTIVITIES],schDays:[1,2,3,4,5],schStart:'08:00',schEnd:'14:00'};
+  const syncCode = (typeof CloudDB !== 'undefined' && CloudDB.generateSyncCode) ? CloudDB.generateSyncCode() : ('OKUL-' + Math.random().toString(36).substring(2,7).toUpperCase());
+  const newStudent = {id:uid(),name,avatar:_regAv,grade,password:pw||'',syncCode,subjects,schedule:emptySchedule(),homework:[],exams:[],notes:[],practice:[],activities:[...DEFAULT_ACTIVITIES],schDays:[1,2,3,4,5],schStart:'08:00',schEnd:'14:00'};
   students.push(newStudent);
   saveStudents(students);
-  if (typeof AppDB !== 'undefined') AppDB.logActivity('OGRENCI_EKLEME', `${name} (${grade}. Sınıf) kaydedildi.`, `${subjects.length} Ders`);
+  if (typeof CloudDB !== 'undefined' && CloudDB.pushStudent) CloudDB.pushStudent(newStudent);
+  if (typeof AppDB !== 'undefined') AppDB.logActivity('OGRENCI_EKLEME', `${name} (${grade}. Sınıf) kaydedildi.`, `${subjects.length} Ders | Kod: ${syncCode}`);
   document.getElementById('regName').value='';
   document.getElementById('regPw').value='';
   document.getElementById('regPw2').value='';
@@ -192,6 +203,13 @@ function doRegister() {
 // ─── APP ENTRY ───────────────────────────
 function enterApp() {
   const s=curStudent(); if(!s) return;
+  if (!s.syncCode && typeof CloudDB !== 'undefined') {
+    s.syncCode = CloudDB.generateSyncCode();
+    updateStudent(s);
+  }
+  if (typeof CloudDB !== 'undefined' && CloudDB.pushStudent) {
+    CloudDB.pushStudent(s);
+  }
   document.getElementById('ahAvatar').textContent=s.avatar;
   document.getElementById('ahName').textContent=s.name;
   if (typeof SchoolAIBot !== 'undefined') SchoolAIBot.updateStudentContext();
@@ -259,9 +277,32 @@ function renderProfilePanel() {
   document.getElementById('ppAvatar').textContent = s.avatar;
   document.getElementById('ppName').textContent   = s.name;
   document.getElementById('ppGrade').textContent  = s.grade + '. Sınıf';
+  renderSyncCodeSection(s);
   renderDaySummary(s);
   renderRecommendations(s);
   renderPwSection(s);
+}
+
+function renderSyncCodeSection(s) {
+  const el = document.getElementById('ppSyncCodeSection'); if (!el) return;
+  if (!s.syncCode && typeof CloudDB !== 'undefined') {
+    s.syncCode = CloudDB.generateSyncCode();
+    updateStudent(s);
+    if (typeof CloudDB.pushStudent === 'function') CloudDB.pushStudent(s);
+  }
+  el.innerHTML = `
+    <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <div>
+        <div style="font-size:.68rem;color:#1e40af;font-weight:700;">Cihazlar Arası Eşleme Kodunuz:</div>
+        <div style="font-family:monospace;font-size:1.15rem;font-weight:900;color:#1d4ed8;letter-spacing:1px;margin-top:2px;">${s.syncCode || 'Üretiliyor...'}</div>
+      </div>
+      <div style="display:flex;gap:4px;">
+        <button class="notice-imp" style="padding:5px 10px;font-size:.72rem;background:#3b82f6;color:#fff;" onclick="navigator.clipboard.writeText('${s.syncCode || ''}');showToast('📋 Kod kopyalandı!','success');">📋 Kopyala</button>
+        <button class="notice-imp" style="padding:5px 8px;font-size:.72rem;background:#e2e8f0;color:#334155;" onclick="generateStudentSyncCode('${s.id}')" title="Yeni bir kod üret">🔄</button>
+      </div>
+    </div>
+    <div style="font-size:.68rem;color:var(--muted);margin-top:4px;">Bu kodu diğer telefon veya tarayıcılarınızda <b>☁️ Buluttan Getir</b> ekranına girerek tüm bilgilerinizi anında getirebilirsiniz.</div>
+  `;
 }
 
 // ── Günün Özeti ──────────────────────────
@@ -536,6 +577,15 @@ async function doImportByCloudCode() {
   }
 }
 
+function generateStudentSyncCode(id) {
+  const s = getStudent(id);
+  if (!s) return;
+  s.syncCode = (typeof CloudDB !== 'undefined' && CloudDB.generateSyncCode) ? CloudDB.generateSyncCode() : ('OKUL-' + Math.random().toString(36).substring(2,7).toUpperCase());
+  updateStudent(s);
+  renderDatabaseModalContent();
+  showToast('🔄 Yeni kod oluşturuldu!', 'success');
+}
+
 // ─── DATABASE MODAL & CRUD LOGS ─────────────────────
 let _dbCurTab = 'logs';
 
@@ -547,7 +597,14 @@ async function openDatabaseModal(initialTab = null) {
 async function renderDatabaseModalContent() {
   const stats = (typeof AppDB !== 'undefined') ? await AppDB.getStats() : { studentCount: allStudents().length, logCount: 0, storageType: 'LocalStorage' };
   const logs = (typeof AppDB !== 'undefined') ? await AppDB.getLogs(60) : [];
-  const cur = curStudent();
+  let cur = curStudent();
+  if (cur && !cur.syncCode) {
+    cur.syncCode = (typeof CloudDB !== 'undefined' && CloudDB.generateSyncCode) ? CloudDB.generateSyncCode() : ('OKUL-' + Math.random().toString(36).substring(2,7).toUpperCase());
+    updateStudent(cur);
+    if (typeof CloudDB !== 'undefined' && CloudDB.pushStudent) {
+      CloudDB.pushStudent(cur);
+    }
+  }
 
   let html = `
     <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;max-height:75vh;overflow-y:auto;">
@@ -598,11 +655,14 @@ async function renderDatabaseModalContent() {
           <h4 style="color:#1e40af;">☁️ Bulut NoSQL Senkronizasyon Durumu</h4>
           <p style="font-size:.76rem;color:#1e3a8a;">Tüm cihazlarınız (Chrome, Edge, Safari, telefon vb.) arasında anlık veri senkronizasyonu aktiftir.</p>
           ${cur ? `
-            <div style="background:#fff;border:1.5px solid #93c5fd;border-radius:10px;padding:10px;margin-top:8px;">
+            <div style="background:#fff;border:1.5px solid #93c5fd;border-radius:10px;padding:12px;margin-top:8px;">
               <div style="font-size:.72rem;color:var(--muted);font-weight:700;">Aktif Öğrenci (${cur.name}) Eşleme Kodu:</div>
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
-                <span style="font-family:monospace;font-size:1.15rem;font-weight:900;color:#1d4ed8;letter-spacing:1px;">${cur.syncCode || 'YOK'}</span>
-                <button class="notice-imp" style="padding:4px 10px;font-size:.72rem;" onclick="navigator.clipboard.writeText('${cur.syncCode || ''}');showToast('📋 Kod kopyalandı!','success');">📋 Kodu Kopyala</button>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;gap:8px;flex-wrap:wrap;">
+                <span style="font-family:monospace;font-size:1.25rem;font-weight:900;color:#1d4ed8;letter-spacing:1.5px;background:#f0f7ff;padding:4px 10px;border-radius:6px;border:1px dashed #3b82f6;">${cur.syncCode || 'Üretiliyor...'}</span>
+                <div style="display:flex;gap:6px;">
+                  <button class="notice-imp" style="padding:6px 12px;font-size:.75rem;background:#3b82f6;color:#fff;" onclick="navigator.clipboard.writeText('${cur.syncCode || ''}');showToast('📋 Kod kopyalandı!','success');">📋 Kodu Kopyala</button>
+                  <button class="notice-imp" style="padding:6px 10px;font-size:.75rem;background:#e2e8f0;color:#334155;" onclick="generateStudentSyncCode('${cur.id}')" title="Yeni bir eşleme kodu üret">🔄 Yenile</button>
+                </div>
               </div>
             </div>
             <div style="display:flex;gap:6px;margin-top:10px;">
