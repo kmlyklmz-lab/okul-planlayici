@@ -1258,13 +1258,13 @@ async function renderParentModalContent() {
   openModal('👨‍👩‍👧 Veli Canlı Takip Paneli', html);
 }
 
-// ─── PARENT DAILY 20:30 REPORT & EMAIL SERVICE ─────────────────────
+// ─── PARENT DAILY SCHEDULED REPORT & EMAIL SERVICE ─────────────────────
 const ParentDailyReporter = {
   checkTimer: null,
 
   init() {
     if (this.checkTimer) clearInterval(this.checkTimer);
-    // Check every 25 seconds for 20:30 schedule
+    // Check every 25 seconds for dynamic schedule match
     this.checkTimer = setInterval(() => this.checkSchedule(), 25000);
     this.checkSchedule();
   },
@@ -1276,6 +1276,19 @@ const ParentDailyReporter = {
   setParentEmail(email) {
     if (email && email.trim()) {
       localStorage.setItem('oa_parent_email', email.trim());
+    }
+  },
+
+  getReportTime() {
+    return localStorage.getItem('oa_parent_report_time') || '20:30';
+  },
+
+  setReportTime(timeStr) {
+    if (timeStr && timeStr.includes(':')) {
+      const parts = timeStr.trim().split(':');
+      const formatted = String(parts[0]).padStart(2, '0') + ':' + String(parts[1]).padStart(2, '0');
+      localStorage.setItem('oa_parent_report_time', formatted);
+      showToast(`⏰ Günlük veli rapor saati ${formatted} olarak güncellendi!`, '#3b82f6');
     }
   },
 
@@ -1303,23 +1316,23 @@ const ParentDailyReporter = {
     const curHour = now.getHours();
     const curMin = now.getMinutes();
     const todayKey = now.toISOString().slice(0, 10);
+    const reportTime = this.getReportTime(); // e.g. "20:30"
+    const [tHour, tMin] = reportTime.split(':').map(Number);
 
-    // If time is >= 20:30 and report not sent today
-    if (curHour >= 20 && (curHour > 20 || curMin >= 30)) {
+    // If current time is >= target scheduled time today
+    if (curHour > tHour || (curHour === tHour && curMin >= tMin)) {
       const lastSent = localStorage.getItem('oa_last_parent_report_date');
       if (lastSent !== todayKey) {
         localStorage.setItem('oa_last_parent_report_date', todayKey);
-        this.sendDailyReport('auto');
-        const cfg = this.getEmailConfig();
-        if (cfg.autoSend && (cfg.serviceId || cfg.webhookUrl)) {
-          this.sendDirectHtmlEmail(true);
-        }
+        // Automatic daily trigger: exactly 1 time per day at scheduled time
+        this.triggerDailyReportRoutine(true);
       }
     }
   },
 
   generateStandaloneEmailHtml(students, dateStr, todayName) {
     const now = new Date();
+    const reportTime = this.getReportTime();
     let studentBlocks = '';
 
     if (!students.length) {
@@ -1407,7 +1420,7 @@ const ParentDailyReporter = {
             <td style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 60%,#3b82f6 100%);padding:24px 20px;text-align:center;color:#ffffff;">
               <div style="font-size:32px;margin-bottom:4px;">🎒</div>
               <h1 style="margin:0 0 4px 0;font-size:22px;font-weight:900;letter-spacing:-0.5px;">Okul Asistanım</h1>
-              <div style="font-size:14px;font-weight:700;opacity:0.95;">📅 ${dateStr} ${todayName} — Saat 20:30 Günlük Veli Bülteni</div>
+              <div style="font-size:14px;font-weight:700;opacity:0.95;">📅 ${dateStr} ${todayName} — Saat ${reportTime} Günlük Veli Bülteni</div>
             </td>
           </tr>
           <tr>
@@ -1439,15 +1452,16 @@ const ParentDailyReporter = {
     const dayNames = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
     const todayName = dayNames[now.getDay()];
     const dateStr = now.toLocaleDateString('tr-TR');
+    const reportTime = this.getReportTime();
 
     let textReport = `🎒 OKUL ASİSTANİM - GÜNLÜK VELİ VE REHBERLİK BÜLTENİ\n`;
-    textReport += `📅 Tarih: ${dateStr} ${todayName} (Saat: 20:30 Bülteni)\n`;
+    textReport += `📅 Tarih: ${dateStr} ${todayName} (Saat: ${reportTime} Bülteni)\n`;
     textReport += `====================================================\n\n`;
 
     let htmlReport = `
       <div style="font-family:'Nunito',sans-serif;color:#1e293b;line-height:1.5;">
         <div style="background:linear-gradient(135deg,#1e1b4b,#4338ca);color:#fff;padding:14px;border-radius:12px;margin-bottom:14px;">
-          <h2 style="margin:0 0 4px 0;font-size:1.1rem;font-weight:900;">🎒 Okul Asistanım - 20:30 Günlük Veli Bülteni</h2>
+          <h2 style="margin:0 0 4px 0;font-size:1.1rem;font-weight:900;">🎒 Okul Asistanım - ${reportTime} Günlük Veli Bülteni</h2>
           <div style="font-size:.76rem;opacity:.9;">📅 ${dateStr} ${todayName} · Tüm Öğrencilerin Gün Sonu Analizi</div>
         </div>
     `;
@@ -1540,7 +1554,8 @@ const ParentDailyReporter = {
     const students = allStudents();
     const now = new Date();
     const dateStr = now.toLocaleDateString('tr-TR');
-    const subject = `🎒 Okul Asistanım - 20:30 Günlük Veli Bülteni (${dateStr})`;
+    const reportTime = this.getReportTime();
+    const subject = `🎒 Okul Asistanım - ${reportTime} Günlük Veli Bülteni (${dateStr})`;
     const report = this.generateAllStudentsReport();
     const cfg = this.getEmailConfig();
 
@@ -1561,11 +1576,12 @@ const ParentDailyReporter = {
             html: report.rawHtml,
             text: report.text,
             studentsCount: report.studentsCount,
+            reportTime,
             sentAt: new Date().toISOString()
           })
         });
         if (res.ok) {
-          showToast(`🚀 20:30 HTML Veli Raporu ${parentEmail} adresine postalandı!`, '#10b981');
+          showToast(`🚀 ${reportTime} HTML Veli Raporu ${parentEmail} adresine postalandı!`, '#10b981');
           if (typeof AppDB !== 'undefined') AppDB.logActivity('VELI_RAPOR_GONDERIM', `HTML E-Posta Webhook ile iletildi: ${parentEmail}`, `${report.studentsCount} Öğrenci`);
           return true;
         }
@@ -1589,6 +1605,7 @@ const ParentDailyReporter = {
             message_html: report.rawHtml,
             message_text: report.text,
             date_str: dateStr,
+            report_time: reportTime,
             students_count: String(report.studentsCount)
           }
         };
@@ -1598,13 +1615,13 @@ const ParentDailyReporter = {
           body: JSON.stringify(payload)
         });
         if (res.ok) {
-          showToast(`🚀 20:30 HTML Veli Raporu ${parentEmail} adresine başarıyla gönderildi!`, '#10b981');
-          if (typeof AppDB !== 'undefined') AppDB.logActivity('VELI_RAPOR_GONDERIM', `HTML E-Posta EmailJS ile gönderildi: ${parentEmail}`, `${report.studentsCount} Öğrenci`);
+          showToast(`🚀 ${reportTime} HTML Veli Raporu ${parentEmail} adresine başarıyla gönderildi!`, '#10b981');
+          if (typeof AppDB !== 'undefined') AppDB.logActivity('VELI_RAPOR_GONDERIM', `HTML E-Posta EmailJS ile iletildi: ${parentEmail}`, `${report.studentsCount} Öğrenci`);
           return true;
         } else {
           const errTxt = await res.text();
           console.warn('EmailJS error:', errTxt);
-          showToast('⚠️ EmailJS ile gönderim başarısız oldu. Ayarları kontrol edin.', '#ef4444');
+          showToast('⚠️ EmailJS ile gönderim başarısız oldu. API bilgilerini kontrol edin.', '#ef4444');
         }
       } catch (e) {
         console.warn('EmailJS fetch error:', e);
@@ -1612,34 +1629,65 @@ const ParentDailyReporter = {
       }
     }
 
-    // Fallback: If not configured, prompt configuration modal or mailto
+    // Fallback if not configured and triggered manually
     if (!isAuto) {
       this.openEmailSettingsModal();
     }
     return false;
   },
 
+  async triggerDailyReportRoutine(isAuto = false) {
+    const parentEmail = this.getParentEmail();
+    const reportTime = this.getReportTime();
+    const report = this.generateAllStudentsReport();
+
+    if (typeof AppDB !== 'undefined') {
+      AppDB.logActivity('VELI_RAPOR_GONDERIM', `Saat ${reportTime} veli bülteni tetiklendi (${report.studentsCount} öğrenci)`, `E-Posta: ${parentEmail}`);
+    }
+
+    const cfg = this.getEmailConfig();
+    let emailSent = false;
+    if (cfg.serviceId || cfg.webhookUrl) {
+      emailSent = await this.sendDirectHtmlEmail(isAuto);
+    }
+
+    if (isAuto) {
+      if (emailSent) {
+        showToast(`📬 Saat ${reportTime} Günlük Veli Raporu ${parentEmail} adresine otomatik postalandı!`, '#10b981');
+      }
+    } else {
+      this.openReportModal(report, 'manual', emailSent);
+    }
+  },
+
   openEmailSettingsModal() {
     const cfg = this.getEmailConfig();
     const parentEmail = this.getParentEmail();
+    const reportTime = this.getReportTime();
 
     const html = `
       <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;">
         <div class="ai-card" style="background:#eff6ff;border-color:#bfdbfe;">
-          <h4 style="color:#1e40af;margin:0 0 4px 0;">⚡ Otomatik HTML E-Posta Gönderim Kurulumu</h4>
+          <h4 style="color:#1e40af;margin:0 0 4px 0;">⚡ Otomatik HTML E-Posta & Saat Kurulumu</h4>
           <p style="font-size:.76rem;color:#1e3a8a;margin:0;line-height:1.45;">
-            Velinin hiçbir düğmeye basmasına gerek kalmadan, her gün <strong>saat 20:30'da</strong> renkli ve görselli HTML bültenin otomatik olarak velinin gelen kutusuna (Gmail vb.) düşmesi için EmailJS (ücretsiz 200 mail/ay) anahtarlarınızı buraya girebilirsiniz.
+            Velinin hiçbir düğmeye basmasına gerek kalmadan, her gün <strong>belirlediğiniz saatte</strong> renkli ve görselli HTML bültenin otomatik olarak velinin gelen kutusuna (Gmail vb.) düşmesi için EmailJS (ücretsiz 200 mail/ay) anahtarlarınızı ve gönderim saatini ayarlayabilirsiniz.
           </p>
         </div>
 
-        <div class="mfg">
-          <label>Veli E-Posta Adresi</label>
-          <input type="email" id="cfgParentEmail" class="field" value="${escH(parentEmail)}" placeholder="veli@gmail.com"/>
+        <div style="display:grid;grid-template-columns:1.2fr 0.8fr;gap:8px;">
+          <div class="mfg" style="margin-bottom:0;">
+            <label>Veli E-Posta Adresi</label>
+            <input type="email" id="cfgParentEmail" class="field" value="${escH(parentEmail)}" placeholder="veli@gmail.com"/>
+          </div>
+          <div class="mfg" style="margin-bottom:0;">
+            <label>⏰ Günlük Gönderim Saati</label>
+            <input type="time" id="cfgReportTime" class="field" value="${reportTime}" style="font-weight:900;font-size:.9rem;color:#1e40af;"/>
+          </div>
         </div>
 
         <div style="background:#f8faff;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;">
           <div style="font-weight:900;color:#1e293b;font-size:.78rem;display:flex;align-items:center;justify-content:space-between;">
-            <span>🔑 EmailJS API Bilgileri (Ücretsiz)</span>
+            <span>🔑 EmailJS API Bilgileri (Ücretsiz 200 Mail/Ay)</span>
             <a href="https://www.emailjs.com/" target="_blank" style="color:#2563eb;text-decoration:none;font-size:.72rem;">EmailJS.com'a Git ↗</a>
           </div>
 
@@ -1662,7 +1710,7 @@ const ParentDailyReporter = {
         <div style="display:flex;align-items:center;gap:8px;background:#fff;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;">
           <input type="checkbox" id="cfgEmailAutoSend" ${cfg.autoSend ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer;"/>
           <label for="cfgEmailAutoSend" style="font-weight:800;color:#1e293b;cursor:pointer;font-size:.78rem;">
-            ⏰ Saat 20:30'da arka planda otomatik HTML mail gönder
+            ⏰ Belirtilen saatte günde 1 kere arka planda otomatik HTML mail gönder
           </label>
         </div>
 
@@ -1671,36 +1719,40 @@ const ParentDailyReporter = {
             💾 Ayarları Kaydet
           </button>
           <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;" onclick="ParentDailyReporter.testSendFromModal()">
-            🚀 Şimdi Test Maili Gönder
+            🚀 Şimdi Canlı Test Maili Gönder
           </button>
         </div>
       </div>
     `;
 
-    openModal('⚙️ Otomatik 20:30 HTML E-Posta Servisi', html);
+    openModal('⚙️ Otomatik Günlük HTML E-Posta Servisi', html);
   },
 
   saveSettingsFromModal() {
     const email = document.getElementById('cfgParentEmail')?.value.trim();
+    const reportTime = document.getElementById('cfgReportTime')?.value.trim() || '20:30';
     const serviceId = document.getElementById('cfgEmailServiceId')?.value.trim() || '';
     const templateId = document.getElementById('cfgEmailTemplateId')?.value.trim() || '';
     const publicKey = document.getElementById('cfgEmailPublicKey')?.value.trim() || '';
     const autoSend = document.getElementById('cfgEmailAutoSend')?.checked ?? true;
 
     if (email) this.setParentEmail(email);
+    this.setReportTime(reportTime);
     this.saveEmailConfig({ serviceId, templateId, publicKey, autoSend });
-    showToast('💾 E-posta servisi ayarları kaydedildi!', '#10b981');
+    showToast('💾 E-posta ve saat ayarları kaydedildi!', '#10b981');
     closeModal();
   },
 
   async testSendFromModal() {
     const email = document.getElementById('cfgParentEmail')?.value.trim();
+    const reportTime = document.getElementById('cfgReportTime')?.value.trim() || '20:30';
     const serviceId = document.getElementById('cfgEmailServiceId')?.value.trim() || '';
     const templateId = document.getElementById('cfgEmailTemplateId')?.value.trim() || '';
     const publicKey = document.getElementById('cfgEmailPublicKey')?.value.trim() || '';
     const autoSend = document.getElementById('cfgEmailAutoSend')?.checked ?? true;
 
     if (email) this.setParentEmail(email);
+    this.setReportTime(reportTime);
     this.saveEmailConfig({ serviceId, templateId, publicKey, autoSend });
 
     if (!serviceId || !templateId || !publicKey) {
@@ -1708,35 +1760,33 @@ const ParentDailyReporter = {
       return;
     }
 
-    showToast('⏳ Test e-postası gönderiliyor...', '#3b82f6');
+    showToast('⏳ Test e-postası doğrudan gönderiliyor...', '#3b82f6');
     await this.sendDirectHtmlEmail(false);
   },
 
-  sendDailyReport(mode = 'manual', studentId = null) {
-    const report = this.generateAllStudentsReport();
+  openReportModal(report, mode = 'manual', emailSent = false) {
     const parentEmail = this.getParentEmail();
-    const now = new Date();
-    const subject = `🎒 Okul Asistanım - 20:30 Günlük Veli Özeti (${now.toLocaleDateString('tr-TR')})`;
-    const mailtoUrl = `mailto:${encodeURIComponent(parentEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(report.text)}`;
+    const reportTime = this.getReportTime();
 
-    if (typeof AppDB !== 'undefined') {
-      AppDB.logActivity('VELI_RAPOR_GONDERIM', `Saat 20:30 veli özeti oluşturuldu (${report.studentsCount} öğrenci)`, `E-Posta: ${parentEmail}`);
-    }
-
-    // Interactive Modal popup for parent
     const modalHtml = `
       <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;">
         <div class="ai-card" style="background:#eff6ff;border-color:#bfdbfe;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <h4 style="color:#1e40af;margin:0;">📧 20:30 Günlük Veli Raporu</h4>
-            <span style="background:#10b981;color:#fff;font-size:.65rem;font-weight:900;padding:2px 7px;border-radius:12px;">${mode==='auto'?'⏰ Otomatik 20:30':'⚡ Anlık Gönderim'}</span>
+            <h4 style="color:#1e40af;margin:0;">📧 Günlük Veli Bülteni (${reportTime})</h4>
+            <span style="background:#10b981;color:#fff;font-size:.65rem;font-weight:900;padding:2px 7px;border-radius:12px;">${mode==='auto'?'⏰ Otomatik Gönderim':'⚡ Manuel Tetikleme'}</span>
           </div>
           <p style="font-size:.75rem;color:#1e3a8a;margin-top:4px;">
             Öğrencilerinizin bugünkü tüm ders, ödev, soru çözümü ve koçluk değerlendirmeleri hazırlandı.
           </p>
-          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;background:#ffffff;padding:8px 12px;border-radius:10px;border:1.5px solid #93c5fd;">
-            <label style="margin:0;white-space:nowrap;font-weight:900;color:#1e40af;font-size:.78rem;">📧 Veli E-Posta:</label>
-            <input type="email" id="parentDailyEmailInput" class="field" style="margin:0;padding:6px 10px;font-size:.84rem;background:#f8faff;color:#0f172a;border:1.5px solid #3b82f6;border-radius:8px;font-weight:800;" value="${escH(parentEmail)}" onchange="ParentDailyReporter.setParentEmail(this.value)" placeholder="ornek@gmail.com"/>
+          <div style="display:grid;grid-template-columns:1.2fr 0.8fr;gap:8px;margin-top:8px;background:#ffffff;padding:8px 12px;border-radius:10px;border:1.5px solid #93c5fd;">
+            <div>
+              <label style="margin:0;white-space:nowrap;font-weight:900;color:#1e40af;font-size:.74rem;display:block;margin-bottom:2px;">📧 Veli E-Posta:</label>
+              <input type="email" id="parentDailyEmailInput" class="field" style="margin:0;padding:5px 8px;font-size:.8rem;background:#f8faff;color:#0f172a;border:1.5px solid #3b82f6;border-radius:6px;font-weight:800;" value="${escH(parentEmail)}" onchange="ParentDailyReporter.setParentEmail(this.value)" placeholder="ornek@gmail.com"/>
+            </div>
+            <div>
+              <label style="margin:0;white-space:nowrap;font-weight:900;color:#1e40af;font-size:.74rem;display:block;margin-bottom:2px;">⏰ Gönderim Saati:</label>
+              <input type="time" id="parentDailyTimeInput" class="field" style="margin:0;padding:5px 8px;font-size:.8rem;background:#f8faff;color:#1e40af;border:1.5px solid #3b82f6;border-radius:6px;font-weight:900;" value="${reportTime}" onchange="ParentDailyReporter.setReportTime(this.value)"/>
+            </div>
           </div>
         </div>
 
@@ -1745,27 +1795,27 @@ const ParentDailyReporter = {
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;font-size:.78rem;" onclick="ParentDailyReporter.sendDirectHtmlEmail()">
-            🚀 HTML Mail Gönder (EmailJS)
+          <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;font-size:.8rem;" onclick="ParentDailyReporter.sendDirectHtmlEmail()">
+            🚀 Şimdi HTML Mail Gönder (EmailJS)
           </button>
-          <a href="${mailtoUrl}" target="_blank" class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;font-size:.78rem;">
-            📧 E-Posta İstemcisi (Mailto)
-          </a>
+          <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#059669,#10b981);color:#fff;padding:10px;font-size:.8rem;" onclick="navigator.clipboard.writeText(\`${report.text.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`);showToast('📋 Rapor panoya kopyalandı!','success');">
+            📋 WhatsApp Formatında Kopyala
+          </button>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:-4px;">
-          <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#059669,#10b981);color:#fff;padding:9px;font-size:.78rem;" onclick="navigator.clipboard.writeText(\`${report.text.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`);showToast('📋 Rapor panoya kopyalandı!','success');">
-            📋 WhatsApp / Panoya Kopyala
-          </button>
-          <button class="btn-login" style="margin-top:0;background:#f1f5f9;color:#334155;border:1.5px solid #cbd5e1;padding:9px;font-size:.78rem;" onclick="ParentDailyReporter.openEmailSettingsModal()">
-            ⚙️ Otomatik E-Posta Ayarları
+        <div style="margin-top:-4px;">
+          <button class="btn-login" style="margin-top:0;background:#f1f5f9;color:#334155;border:1.5px solid #cbd5e1;padding:8px;font-size:.76rem;width:100%;" onclick="ParentDailyReporter.openEmailSettingsModal()">
+            ⚙️ E-Posta Servisi & Otomatik Gönderim Ayarları
           </button>
         </div>
       </div>
     `;
 
-    openModal('📧 Günlük Veli E-Posta Özeti (20:30)', modalHtml);
-    showToast('📧 20:30 Veli Raporu hazırlandı!', 'success');
+    openModal(`📧 Günlük Veli E-Posta Bülteni (${reportTime})`, modalHtml);
+  },
+
+  sendDailyReport(mode = 'manual', studentId = null) {
+    this.triggerDailyReportRoutine(mode === 'auto');
   }
 };
 

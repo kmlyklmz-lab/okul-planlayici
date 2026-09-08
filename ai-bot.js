@@ -1195,13 +1195,26 @@ const SchoolAIBot = {
 
     openSettingsModal() {
         const parentEmail = (typeof ParentDailyReporter !== 'undefined') ? ParentDailyReporter.getParentEmail() : 'veli@ornek.com';
+        const reportTime = (typeof ParentDailyReporter !== 'undefined') ? ParentDailyReporter.getReportTime() : '20:30';
         const html = `
             <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;">
-                <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;">
-                    <label style="font-size:.78rem;font-weight:900;color:#1e40af;text-transform:uppercase;letter-spacing:.3px;">📧 Veli E-Posta Bildirim Ayarı (Saat 20:30)</label>
-                    <input type="email" id="aiModalParentEmail" class="field" style="background:#ffffff;color:#0f172a;border:1.5px solid #3b82f6;font-weight:800;padding:8px 12px;font-size:.84rem;" value="${escH(parentEmail)}" placeholder="veli@gmail.com"/>
+                <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <label style="font-size:.78rem;font-weight:900;color:#1e40af;text-transform:uppercase;letter-spacing:.3px;">📧 Günlük Veli E-Posta Ayarları</label>
+                        <button type="button" class="btn-sm" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;font-size:.7rem;padding:2px 7px;border-radius:6px;cursor:pointer;" onclick="ParentDailyReporter.openEmailSettingsModal()">⚙️ EmailJS Kurulumu</button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1.2fr 0.8fr;gap:8px;">
+                        <div>
+                            <label style="display:block;font-size:.72rem;font-weight:800;color:#475569;margin-bottom:2px;">Veli E-Posta</label>
+                            <input type="email" id="aiModalParentEmail" class="field" style="background:#ffffff;color:#0f172a;border:1.5px solid #3b82f6;font-weight:800;padding:6px 10px;font-size:.82rem;" value="${escH(parentEmail)}" placeholder="veli@gmail.com"/>
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:.72rem;font-weight:800;color:#475569;margin-bottom:2px;">⏰ Gönderim Saati</label>
+                            <input type="time" id="aiModalParentTime" class="field" style="background:#ffffff;color:#1e40af;border:1.5px solid #3b82f6;font-weight:900;padding:6px 10px;font-size:.82rem;" value="${reportTime}"/>
+                        </div>
+                    </div>
                     <div style="font-size:.72rem;color:#1e3a8a;font-weight:600;">
-                        Her gün saat 20:30'da tüm öğrencilerin günlük özeti bu e-posta adresine otomatik hazırlanır.
+                        Her gün belirlenen saatte (${reportTime}) tüm öğrencilerin özeti veli e-posta adresine otomatik gönderilir.
                     </div>
                 </div>
 
@@ -1225,7 +1238,7 @@ const SchoolAIBot = {
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
                     <button class="btn-login" style="margin-top:0;background:#10b981;color:#fff;" onclick="SchoolAIBot.saveSettingsFromModal()">💾 Ayarları Kaydet</button>
-                    <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;" onclick="ParentDailyReporter.sendDailyReport('manual')">📧 20:30 Raporunu Test Et</button>
+                    <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;" onclick="ParentDailyReporter.triggerDailyReportRoutine(false)">🚀 Şimdi Canlı Test Et</button>
                 </div>
             </div>
         `;
@@ -1242,8 +1255,12 @@ const SchoolAIBot = {
 
     saveSettingsFromModal() {
         const mailInp = document.getElementById('aiModalParentEmail');
+        const timeInp = document.getElementById('aiModalParentTime');
         if (mailInp && typeof ParentDailyReporter !== 'undefined') {
             ParentDailyReporter.setParentEmail(mailInp.value);
+        }
+        if (timeInp && typeof ParentDailyReporter !== 'undefined') {
+            ParentDailyReporter.setReportTime(timeInp.value);
         }
 
         const tog = document.getElementById('aiLlmToggle');
