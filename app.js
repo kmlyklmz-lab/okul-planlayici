@@ -48,16 +48,10 @@ function allStudents() { return JSON.parse(localStorage.getItem('oa_students')||
 function saveStudents(arr) { 
   localStorage.setItem('oa_students', JSON.stringify(arr)); 
   if (typeof AppDB !== 'undefined' && AppDB.saveAllStudents) AppDB.saveAllStudents(arr);
+  if (typeof CloudDB !== 'undefined' && CloudDB.pushToCloud) CloudDB.pushToCloud(arr);
 }
 function getStudent(id) { 
-  const list = allStudents();
-  const s = list.find(x => x.id === id) || null; 
-  if (s && !s.syncCode) {
-    s.syncCode = (typeof CloudDB !== 'undefined' && CloudDB.generateSyncCode) ? CloudDB.generateSyncCode() : ('OKUL-' + Math.random().toString(36).substring(2,7).toUpperCase());
-    const idx = list.findIndex(x => x.id === s.id);
-    if (idx !== -1) { list[idx] = s; saveStudents(list); }
-  }
-  return s; 
+  return allStudents().find(s => s.id === id) || null;
 }
 function getActs() { const s=curStudent(); return s?(s.activities&&s.activities.length?s.activities:[...DEFAULT_ACTIVITIES]):[...DEFAULT_ACTIVITIES]; }
 function saveActs(arr) { const s=curStudent();if(!s)return;s.activities=arr;updateStudent(s); }
@@ -187,12 +181,10 @@ function doRegister() {
   const students=allStudents();
   if(students.find(s=>s.name.toLowerCase()===name.toLowerCase())){showErr('❗ Bu isimde öğrenci var!');return;}
   const subjects=DEFAULT_SUBJECTS.map(s=>({id:uid(),name:s.name,emoji:s.emoji,color:s.color,teacher:''}));
-  const syncCode = (typeof CloudDB !== 'undefined' && CloudDB.generateSyncCode) ? CloudDB.generateSyncCode() : ('OKUL-' + Math.random().toString(36).substring(2,7).toUpperCase());
-  const newStudent = {id:uid(),name,avatar:_regAv,grade,password:pw||'',syncCode,subjects,schedule:emptySchedule(),homework:[],exams:[],notes:[],practice:[],activities:[...DEFAULT_ACTIVITIES],schDays:[1,2,3,4,5],schStart:'08:00',schEnd:'14:00'};
+  const newStudent = {id:uid(),name,avatar:_regAv,grade,password:pw||'',subjects,schedule:emptySchedule(),homework:[],exams:[],notes:[],practice:[],activities:[...DEFAULT_ACTIVITIES],schDays:[1,2,3,4,5],schStart:'08:00',schEnd:'14:00'};
   students.push(newStudent);
   saveStudents(students);
-  if (typeof CloudDB !== 'undefined' && CloudDB.pushStudent) CloudDB.pushStudent(newStudent);
-  if (typeof AppDB !== 'undefined') AppDB.logActivity('OGRENCI_EKLEME', `${name} (${grade}. Sınıf) kaydedildi.`, `${subjects.length} Ders | Kod: ${syncCode}`);
+  if (typeof AppDB !== 'undefined') AppDB.logActivity('OGRENCI_EKLEME', `${name} (${grade}. Sınıf) kaydedildi.`, `${subjects.length} Ders`);
   document.getElementById('regName').value='';
   document.getElementById('regPw').value='';
   document.getElementById('regPw2').value='';
@@ -203,13 +195,6 @@ function doRegister() {
 // ─── APP ENTRY ───────────────────────────
 function enterApp() {
   const s=curStudent(); if(!s) return;
-  if (!s.syncCode && typeof CloudDB !== 'undefined') {
-    s.syncCode = CloudDB.generateSyncCode();
-    updateStudent(s);
-  }
-  if (typeof CloudDB !== 'undefined' && CloudDB.pushStudent) {
-    CloudDB.pushStudent(s);
-  }
   document.getElementById('ahAvatar').textContent=s.avatar;
   document.getElementById('ahName').textContent=s.name;
   if (typeof SchoolAIBot !== 'undefined') SchoolAIBot.updateStudentContext();
@@ -277,32 +262,9 @@ function renderProfilePanel() {
   document.getElementById('ppAvatar').textContent = s.avatar;
   document.getElementById('ppName').textContent   = s.name;
   document.getElementById('ppGrade').textContent  = s.grade + '. Sınıf';
-  renderSyncCodeSection(s);
   renderDaySummary(s);
   renderRecommendations(s);
   renderPwSection(s);
-}
-
-function renderSyncCodeSection(s) {
-  const el = document.getElementById('ppSyncCodeSection'); if (!el) return;
-  if (!s.syncCode && typeof CloudDB !== 'undefined') {
-    s.syncCode = CloudDB.generateSyncCode();
-    updateStudent(s);
-    if (typeof CloudDB.pushStudent === 'function') CloudDB.pushStudent(s);
-  }
-  el.innerHTML = `
-    <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-      <div>
-        <div style="font-size:.68rem;color:#1e40af;font-weight:700;">Cihazlar Arası Eşleme Kodunuz:</div>
-        <div style="font-family:monospace;font-size:1.15rem;font-weight:900;color:#1d4ed8;letter-spacing:1px;margin-top:2px;">${s.syncCode || 'Üretiliyor...'}</div>
-      </div>
-      <div style="display:flex;gap:4px;">
-        <button class="notice-imp" style="padding:5px 10px;font-size:.72rem;background:#3b82f6;color:#fff;" onclick="navigator.clipboard.writeText('${s.syncCode || ''}');showToast('📋 Kod kopyalandı!','success');">📋 Kopyala</button>
-        <button class="notice-imp" style="padding:5px 8px;font-size:.72rem;background:#e2e8f0;color:#334155;" onclick="generateStudentSyncCode('${s.id}')" title="Yeni bir kod üret">🔄</button>
-      </div>
-    </div>
-    <div style="font-size:.68rem;color:var(--muted);margin-top:4px;">Bu kodu diğer telefon veya tarayıcılarınızda <b>☁️ Buluttan Getir</b> ekranına girerek tüm bilgilerinizi anında getirebilirsiniz.</div>
-  `;
 }
 
 // ── Günün Özeti ──────────────────────────
@@ -540,52 +502,6 @@ function importData() {
   document.body.removeChild(inp);
 }
 
-// ─── CLOUD NOSQL LOGIN & SYNC MODALS ────────────────
-function openCloudLoginModal() {
-  const html = `
-    <div style="font-size:.82rem;display:flex;flex-direction:column;gap:12px;">
-      <p style="color:var(--muted);line-height:1.45;">
-        Farklı bir bilgisayar veya telefondan aldığınız <strong>Bulut Senkronizasyon Kodunu</strong> girerek öğrenci profilinizi ve tüm ders programınızı bu tarayıcıya tek tıkla aktarın:
-      </p>
-      <div>
-        <label class="fl">Bulut Senkronizasyon Kodu</label>
-        <input type="text" id="cloudSyncCodeInput" class="field" placeholder="Örn: OKUL-8F2K" style="text-transform:uppercase;font-family:monospace;font-weight:900;letter-spacing:1px;font-size:1.05rem;" onkeydown="if(event.key==='Enter') doImportByCloudCode()"/>
-      </div>
-      <button class="btn-login" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;" onclick="doImportByCloudCode()">☁️ Buluttan Öğrenciyi Çek & Eşle</button>
-    </div>
-  `;
-  openModal('☁️ Bulut NoSQL ile Öğrenci Getir', html);
-  setTimeout(() => {
-    const inp = document.getElementById('cloudSyncCodeInput');
-    if (inp) inp.focus();
-  }, 150);
-}
-
-async function doImportByCloudCode() {
-  const inp = document.getElementById('cloudSyncCodeInput');
-  if (!inp) return;
-  const code = inp.value.trim().toUpperCase();
-  if (!code) {
-    showToast('❗ Lütfen bir kod girin!', 'error');
-    return;
-  }
-  if (typeof CloudDB !== 'undefined') {
-    const res = await CloudDB.importStudentBySyncCode(code);
-    if (res) {
-      closeModal();
-    }
-  }
-}
-
-function generateStudentSyncCode(id) {
-  const s = getStudent(id);
-  if (!s) return;
-  s.syncCode = (typeof CloudDB !== 'undefined' && CloudDB.generateSyncCode) ? CloudDB.generateSyncCode() : ('OKUL-' + Math.random().toString(36).substring(2,7).toUpperCase());
-  updateStudent(s);
-  renderDatabaseModalContent();
-  showToast('🔄 Yeni kod oluşturuldu!', 'success');
-}
-
 // ─── DATABASE MODAL & CRUD LOGS ─────────────────────
 let _dbCurTab = 'logs';
 
@@ -597,14 +513,8 @@ async function openDatabaseModal(initialTab = null) {
 async function renderDatabaseModalContent() {
   const stats = (typeof AppDB !== 'undefined') ? await AppDB.getStats() : { studentCount: allStudents().length, logCount: 0, storageType: 'LocalStorage' };
   const logs = (typeof AppDB !== 'undefined') ? await AppDB.getLogs(60) : [];
-  let cur = curStudent();
-  if (cur && !cur.syncCode) {
-    cur.syncCode = (typeof CloudDB !== 'undefined' && CloudDB.generateSyncCode) ? CloudDB.generateSyncCode() : ('OKUL-' + Math.random().toString(36).substring(2,7).toUpperCase());
-    updateStudent(cur);
-    if (typeof CloudDB !== 'undefined' && CloudDB.pushStudent) {
-      CloudDB.pushStudent(cur);
-    }
-  }
+  const cur = curStudent();
+  const students = allStudents();
 
   let html = `
     <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;max-height:75vh;overflow-y:auto;">
@@ -652,29 +562,23 @@ async function renderDatabaseModalContent() {
       <!-- Tab 2: Cloud NoSQL -->
       <div id="dbTabCloud" style="${_dbCurTab === 'cloud' ? 'display:flex;flex-direction:column;gap:10px;' : 'display:none;'}">
         <div class="ai-card" style="background:#eff6ff;border-color:#bfdbfe;">
-          <h4 style="color:#1e40af;">☁️ Bulut NoSQL Senkronizasyon Durumu</h4>
-          <p style="font-size:.76rem;color:#1e3a8a;">Tüm cihazlarınız (Chrome, Edge, Safari, telefon vb.) arasında anlık veri senkronizasyonu aktiftir.</p>
-          ${cur ? `
-            <div style="background:#fff;border:1.5px solid #93c5fd;border-radius:10px;padding:12px;margin-top:8px;">
-              <div style="font-size:.72rem;color:var(--muted);font-weight:700;">Aktif Öğrenci (${cur.name}) Eşleme Kodu:</div>
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;gap:8px;flex-wrap:wrap;">
-                <span style="font-family:monospace;font-size:1.25rem;font-weight:900;color:#1d4ed8;letter-spacing:1.5px;background:#f0f7ff;padding:4px 10px;border-radius:6px;border:1px dashed #3b82f6;">${cur.syncCode || 'Üretiliyor...'}</span>
-                <div style="display:flex;gap:6px;">
-                  <button class="notice-imp" style="padding:6px 12px;font-size:.75rem;background:#3b82f6;color:#fff;" onclick="navigator.clipboard.writeText('${cur.syncCode || ''}');showToast('📋 Kod kopyalandı!','success');">📋 Kodu Kopyala</button>
-                  <button class="notice-imp" style="padding:6px 10px;font-size:.75rem;background:#e2e8f0;color:#334155;" onclick="generateStudentSyncCode('${cur.id}')" title="Yeni bir eşleme kodu üret">🔄 Yenile</button>
-                </div>
-              </div>
+          <h4 style="color:#1e40af;">☁️ Otomatik Bulut NoSQL Motoru</h4>
+          <p style="font-size:.76rem;color:#1e3a8a;line-height:1.45;">
+            Tüm kayıtlı öğrencileriniz (<strong>${students.length} Öğrenci</strong>), ders programları, ödevler, sınavlar ve notlar bulutta saklanır ve tüm tarayıcı/cihazlarınızda otomatik senkronize edilir.
+          </p>
+          <div style="background:#fff;border:1.5px solid #93c5fd;border-radius:10px;padding:12px;margin-top:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:.76rem;font-weight:700;color:#1e3a8a;">Bulut Durumu:</span>
+              <span style="font-weight:900;color:#10b981;font-size:.82rem;">🟢 Canlı & Otomatik Eşitleme Aktif</span>
             </div>
-            <div style="display:flex;gap:6px;margin-top:10px;">
-              <button class="btn-login" style="flex:1;margin-top:0;background:#3b82f6;color:#fff;" onclick="CloudDB.pushStudent(curStudent()).then(()=>showToast('☁️ Bulut NoSQL güncellendi!','success'))">☁️ Şimdi Buluta Gönder</button>
-              <button class="btn-login" style="flex:1;margin-top:0;background:#10b981;color:#fff;" onclick="CloudDB.pullStudent(curStudent().syncCode).then(s=>{if(s){updateStudent(s);renderDatabaseModalContent();showToast('🔄 Buluttan çekildi!','success');}})">🔄 Buluttan Çek</button>
+            <div style="font-size:.72rem;color:var(--muted);margin-top:6px;line-height:1.4;">
+              İnternet bağlantısı varken hiçbir kod girmeden herhangi bir cihazdan uygulamayı açtığınızda tüm öğrencileriniz anında gelir. Çevrimdışıyken yapılan değişiklikler ise internet geldiği anda otomatik olarak buluta yüklenir.
             </div>
-          ` : '<p style="font-size:.76rem;color:var(--muted);margin-top:6px;">Bir öğrenci profiliyle giriş yaptığınızda özel eşleme kodu burada görünecektir.</p>'}
-        </div>
-        <div class="ai-card">
-          <h4>📱 Başka Cihazdan Öğrenci Eşle</h4>
-          <p style="font-size:.76rem;color:var(--muted);">Farklı bir tarayıcıda oluşturduğunuz kodu girerek profili bu cihaza getirin.</p>
-          <button class="btn-login" style="background:#6366f1;color:#fff;margin-top:6px;" onclick="openCloudLoginModal()">☁️ Bulut Kodu ile Öğrenci Çek</button>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:10px;">
+            <button class="btn-login" style="flex:1;margin-top:0;background:#3b82f6;color:#fff;" onclick="CloudDB.pushToCloud(allStudents()).then(()=>showToast('☁️ Tüm öğrenciler buluta gönderildi!','success'))">☁️ Buluta Manuel Gönder</button>
+            <button class="btn-login" style="flex:1;margin-top:0;background:#10b981;color:#fff;" onclick="CloudDB.pullFromCloud().then(()=>{renderDatabaseModalContent();showToast('🔄 Buluttan güncellendi!','success');})">🔄 Buluttan Şimdi Çek</button>
+          </div>
         </div>
       </div>
 

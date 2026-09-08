@@ -1,83 +1,63 @@
-/* cloud-db.js — Cloud NoSQL Multi-Device Sync Engine for Okul Asistanım */
+/* cloud-db.js — Cloud-First NoSQL Automatic Multi-Device Engine for Okul Asistanım */
 
 const CloudDB = {
-    // Primary cloud NoSQL endpoint for cross-browser synchronization
-    apiUrl: 'https://kv.val.run', 
-    autoSync: true,
+    masterDocId: 'ff808181a067127101a080a69de64892',
+    endpoint: 'https://api.restful-api.dev/objects',
+    syncStatus: 'idle', // 'idle' | 'syncing' | 'synced' | 'offline' | 'error'
     lastSyncTime: null,
-    syncStatus: 'idle', // 'idle' | 'syncing' | 'synced' | 'error' | 'offline'
+    hasPendingOfflineChanges: false,
+    syncInterval: null,
+
+    // Unicode-safe stringify to handle emojis, Turkish characters, and complex objects safely
+    safeStringify(obj) {
+        return JSON.stringify(obj).replace(/[\u007F-\uFFFF]/g, function(chr) {
+            return '\\u' + ('0000' + chr.charCodeAt(0).toString(16)).substr(-4);
+        });
+    },
 
     init() {
-        this.loadSettings();
-        this.ensureAllSyncCodes();
         this.updateHeaderBadge();
-        // Check internet connectivity
+        
+        // Initial automatic pull from Cloud on startup
+        this.pullFromCloud(true);
+
+        // Auto-sync listeners
         window.addEventListener('online', () => {
             this.syncStatus = 'synced';
             this.updateHeaderBadge();
-            this.syncCurrentStudent();
+            if (this.hasPendingOfflineChanges) {
+                const students = (typeof allStudents === 'function') ? allStudents() : [];
+                this.pushToCloud(students);
+            } else {
+                this.pullFromCloud();
+            }
         });
+
         window.addEventListener('offline', () => {
             this.syncStatus = 'offline';
             this.updateHeaderBadge();
         });
-    },
 
-    ensureSyncCode(student) {
-        if (!student) return null;
-        if (!student.syncCode) {
-            student.syncCode = this.generateSyncCode();
-            if (typeof updateStudent === 'function') {
-                updateStudent(student);
+        // Sync when user switches back to this tab / browser window
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && navigator.onLine) {
+                this.pullFromCloud(true);
             }
-        }
-        return student.syncCode;
-    },
+        });
 
-    ensureAllSyncCodes() {
-        try {
-            if (typeof allStudents === 'function') {
-                const list = allStudents();
-                let changed = false;
-                list.forEach(s => {
-                    if (!s.syncCode) {
-                        s.syncCode = this.generateSyncCode();
-                        changed = true;
-                    }
-                });
-                if (changed && typeof saveStudents === 'function') {
-                    saveStudents(list);
-                }
+        window.addEventListener('focus', () => {
+            if (navigator.onLine) {
+                this.pullFromCloud(true);
             }
-        } catch (e) {}
-    },
+        });
 
-    loadSettings() {
-        try {
-            const saved = localStorage.getItem('oa_cloud_settings');
-            if (saved) {
-                const conf = JSON.parse(saved);
-                if (conf.apiUrl) this.apiUrl = conf.apiUrl;
-                if (conf.autoSync !== undefined) this.autoSync = conf.autoSync;
+        // Background sync polling every 20 seconds
+        if (this.syncInterval) clearInterval(this.syncInterval);
+        this.syncInterval = setInterval(() => {
+            if (navigator.onLine && !document.hidden) {
+                this.pullFromCloud(true);
             }
-        } catch (e) {}
-    },
-
-    saveSettings() {
-        localStorage.setItem('oa_cloud_settings', JSON.stringify({
-            apiUrl: this.apiUrl,
-            autoSync: this.autoSync
-        }));
-    },
-
-    // Generates a 6-character clean sync code like 'OKUL-8F2K'
-    generateSyncCode() {
-        const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-        let code = 'OKUL-';
-        for (let i = 0; i < 5; i++) {
-            code += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return code;
+        }, 20000);
     },
 
     updateHeaderBadge(customText = null) {
@@ -96,12 +76,12 @@ const CloudDB = {
         if (!badge) return;
 
         let icon = '☁️';
-        let text = 'Bulut: Aktif';
+        let text = 'Bulut: Eşitlendi';
         let colorClass = 'status-synced';
 
         if (!navigator.onLine) {
             icon = '📴';
-            text = 'Çevrimdışı';
+            text = 'Çevrimdışı (Yerel)';
             colorClass = 'status-offline';
         } else if (this.syncStatus === 'syncing') {
             icon = '🔄';
@@ -123,15 +103,96 @@ const CloudDB = {
         badge.innerHTML = `<span class="cloud-dot"></span><span>${icon} ${text}</span>`;
     },
 
-    // Push a student's full document to Cloud NoSQL
-    async pushStudent(student) {
-        if (!student) return false;
-        if (!student.syncCode) {
-            student.syncCode = this.generateSyncCode();
-            if (typeof updateStudent === 'function') updateStudent(student);
+    // Pull ALL registered students automatically from Cloud NoSQL
+    async pullFromCloud(silent = false) {
+        if (!navigator.onLine) {
+            this.syncStatus = 'offline';
+            this.updateHeaderBadge();
+            return null;
         }
 
+        if (!silent) {
+            this.syncStatus = 'syncing';
+            this.updateHeaderBadge();
+        }
+
+        try {
+            const res = await fetch(`${this.endpoint}/${this.masterDocId}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const json = await res.json();
+            if (!json || !json.data || !json.data.students_json) {
+                return null;
+            }
+
+            const cloudStudents = JSON.parse(json.data.students_json);
+            if (!Array.isArray(cloudStudents)) return null;
+
+            // Merge cloud students with local students
+            const localStudents = (typeof allStudents === 'function') ? allStudents() : [];
+            let updated = false;
+
+            // If local is completely empty and cloud has students, take cloud
+            if (localStudents.length === 0 && cloudStudents.length > 0) {
+                localStorage.setItem('oa_students', JSON.stringify(cloudStudents));
+                if (typeof AppDB !== 'undefined' && AppDB.saveAllStudents) {
+                    AppDB.saveAllStudents(cloudStudents);
+                }
+                updated = true;
+            } else if (cloudStudents.length > 0) {
+                // Smart merge by student ID
+                const merged = [...cloudStudents];
+                localStudents.forEach(localStu => {
+                    const idx = merged.findIndex(s => s.id === localStu.id);
+                    if (idx === -1) {
+                        merged.push(localStu);
+                        updated = true;
+                    }
+                });
+
+                const currentLocalStr = JSON.stringify(localStudents);
+                const mergedStr = JSON.stringify(merged);
+                if (currentLocalStr !== mergedStr) {
+                    localStorage.setItem('oa_students', mergedStr);
+                    if (typeof AppDB !== 'undefined' && AppDB.saveAllStudents) {
+                        AppDB.saveAllStudents(merged);
+                    }
+                    updated = true;
+                }
+            }
+
+            this.lastSyncTime = new Date();
+            this.syncStatus = 'synced';
+            this.updateHeaderBadge();
+
+            // If UI needs refresh
+            if (updated) {
+                if (typeof renderLoginScreen === 'function') renderLoginScreen();
+                if (typeof CUR_ID !== 'undefined' && CUR_ID && typeof enterApp === 'function') {
+                    // Update active student view if present
+                    if (typeof renderSubjects === 'function') renderSubjects();
+                    if (typeof renderHomework === 'function') renderHomework();
+                    if (typeof renderExams === 'function') renderExams();
+                    if (typeof renderNotes === 'function') renderNotes();
+                    if (typeof renderPractice === 'function') renderPractice();
+                }
+            }
+
+            return cloudStudents;
+        } catch (err) {
+            console.warn('Bulut senkronizasyon okuma hatası (Yerel veriler kullanılıyor):', err);
+            this.syncStatus = 'error';
+            this.updateHeaderBadge();
+            return null;
+        }
+    },
+
+    // Push ALL students automatically to Cloud NoSQL
+    async pushToCloud(students) {
+        if (!Array.isArray(students)) return false;
+
         if (!navigator.onLine) {
+            this.hasPendingOfflineChanges = true;
             this.syncStatus = 'offline';
             this.updateHeaderBadge();
             return false;
@@ -141,135 +202,43 @@ const CloudDB = {
         this.updateHeaderBadge();
 
         try {
+            const safeJson = this.safeStringify(students);
             const payload = {
-                id: student.id,
-                name: student.name,
-                avatar: student.avatar,
-                grade: student.grade,
-                password: student.password || '',
-                syncCode: student.syncCode,
-                subjects: student.subjects || [],
-                schedule: student.schedule || {},
-                homework: student.homework || [],
-                exams: student.exams || [],
-                notes: student.notes || [],
-                practice: student.practice || [],
-                activities: student.activities || [],
-                updatedAt: new Date().toISOString()
+                name: 'okul_master_data',
+                data: {
+                    students_json: safeJson,
+                    count: students.length,
+                    updatedAt: new Date().toISOString()
+                }
             };
 
-            // Post to Cloud Key-Value / NoSQL Store
-            const res = await fetch(`${this.apiUrl}/okul_student_${student.syncCode}`, {
-                method: 'POST',
+            const res = await fetch(`${this.endpoint}/${this.masterDocId}`, {
+                method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
 
             if (!res.ok) {
-                // Fallback attempt with PUT
-                await fetch(`${this.apiUrl}/okul_student_${student.syncCode}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                throw new Error(`HTTP ${res.status}`);
             }
 
+            this.hasPendingOfflineChanges = false;
             this.lastSyncTime = new Date();
             this.syncStatus = 'synced';
             this.updateHeaderBadge();
-            if (typeof AppDB !== 'undefined' && AppDB.logActivity) {
-                AppDB.logActivity('BULUT_SENKRON', `${student.name} verileri bulut NoSQL'e yedeklendi.`, `Kod: ${student.syncCode}`, student.id);
-            }
             return true;
         } catch (err) {
-            console.warn('Bulut senkronizasyon hatası (yerel IndexedDB devrede):', err);
+            console.warn('Bulut senkronizasyon yazma hatası (Yerel kayıt yapıldı):', err);
+            this.hasPendingOfflineChanges = true;
             this.syncStatus = 'error';
             this.updateHeaderBadge();
             return false;
         }
-    },
-
-    // Pull student document from Cloud NoSQL using sync code
-    async pullStudent(syncCode) {
-        if (!syncCode) return null;
-        const cleanCode = syncCode.trim().toUpperCase();
-
-        if (!navigator.onLine) {
-            showToast('⚠️ İnternet bağlantınız yok!', 'error');
-            return null;
-        }
-
-        try {
-            const res = await fetch(`${this.apiUrl}/okul_student_${cleanCode}`, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' }
-            });
-
-            if (!res.ok) {
-                throw new Error('Öğrenci bulunamadı (Kod: ' + cleanCode + ')');
-            }
-
-            const data = await res.json();
-            if (!data || !data.name) {
-                throw new Error('Geçersiz bulut veri yapısı');
-            }
-
-            return data;
-        } catch (err) {
-            console.error('Bulut çekme hatası:', err);
-            return null;
-        }
-    },
-
-    // Sync active student
-    async syncCurrentStudent() {
-        const s = (typeof curStudent === 'function') ? curStudent() : null;
-        if (s && this.autoSync) {
-            await this.pushStudent(s);
-        }
-    },
-
-    // Import student via Cloud Sync Code from UI
-    async importStudentBySyncCode(code) {
-        if (!code) {
-            showToast('❗ Lütfen bir senkronizasyon kodu girin!', 'error');
-            return false;
-        }
-
-        showToast('☁️ Buluttan veriler getiriliyor...', 'info');
-        const cloudStudent = await this.pullStudent(code);
-
-        if (!cloudStudent) {
-            showToast(`❌ "${code}" koduna ait öğrenci bulunamadı! Lütfen kodu kontrol edin.`, 'error');
-            return false;
-        }
-
-        const students = (typeof allStudents === 'function') ? allStudents() : [];
-        const existingIdx = students.findIndex(s => s.syncCode === cloudStudent.syncCode || s.id === cloudStudent.id);
-
-        if (existingIdx !== -1) {
-            students[existingIdx] = cloudStudent;
-            showToast(`🔄 "${cloudStudent.name}" güncellendi ve eşitlendi!`, 'success');
-        } else {
-            students.push(cloudStudent);
-            showToast(`🎉 "${cloudStudent.name}" başarıyla bu cihaza aktarıldı!`, 'success');
-        }
-
-        if (typeof saveStudents === 'function') saveStudents(students);
-        if (typeof renderLoginScreen === 'function') renderLoginScreen();
-        if (typeof AppDB !== 'undefined' && AppDB.logActivity) {
-            AppDB.logActivity('BULUT_AKTARMASI', `"${cloudStudent.name}" buluttan içe aktarıldı.`, `Kod: ${cloudStudent.syncCode}`, cloudStudent.id);
-        }
-
-        return cloudStudent;
     }
 };
 
 if (typeof window !== 'undefined') {
     window.CloudDB = CloudDB;
-    window.addEventListener('DOMContentLoaded', () => {
-        CloudDB.init();
-    });
 }
 if (typeof global !== 'undefined') {
     global.CloudDB = CloudDB;

@@ -29,14 +29,14 @@
 
     <!-- Data safety notice -->
     <div class="data-notice">
-      <span>💾</span>
+      <span>☁️</span>
       <div>
-        <strong>Veriler IndexedDB Veritabanında Saklanır</strong>
-        Tüm bilgiler tarayıcınızın yerel veritabanında kalıcı olarak saklanır.
+        <strong>Bulut NoSQL & Otomatik Eşitleme Aktif</strong>
+        Tüm cihazlarınızdaki öğrenciler internet üzerinden otomatik yüklenir ve eşitlenir.
       </div>
       <div style="display:flex;gap:6px;margin-left:auto;flex-wrap:wrap;">
         <button class="notice-imp" onclick="openDatabaseModal()">💾 Veritabanı</button>
-        <button class="notice-imp" onclick="importData()">📂 Yedek Yükle</button>
+        <button class="notice-imp" onclick="CloudDB.pullFromCloud().then(()=>showToast('☁️ Buluttan eşitlendi!','success'))">🔄 Eşitle</button>
       </div>
     </div>
     <div class="glass-card">
@@ -48,10 +48,7 @@
         <div id="loginErr" class="err-msg">❌ Şifre yanlış!</div>
         <button class="btn-login" onclick="doLogin()">🚀 Giriş Yap</button>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
-        <button class="btn-new-student" style="margin-top:0;" onclick="showScreen('register')">➕ Yeni Öğrenci</button>
-        <button class="btn-new-student" style="margin-top:0;background:rgba(99,102,241,0.25);border-color:rgba(199,210,254,0.5);" onclick="openCloudLoginModal()">☁️ Buluttan Getir</button>
-      </div>
+      <button class="btn-new-student" onclick="showScreen('register')">➕ Yeni Öğrenci Oluştur</button>
     </div>
   </div>
 </div>
@@ -248,7 +245,6 @@
       <button class="pp-close" onclick="closeProfile()">✕</button>
     </div>
     <div class="pp-body">
-      <div class="pp-sec"><div class="pp-sec-h">☁️ Bulut Eşleme Kodu</div><div id="ppSyncCodeSection"></div></div>
       <div class="pp-sec"><div class="pp-sec-h">📅 Bugünün Özeti</div><div id="ppSummary"></div></div>
       <div class="pp-sec"><div class="pp-sec-h">💡 Asistan Önerileri</div><div id="ppRecs"></div></div>
       <div class="pp-sec"><div class="pp-sec-h">🔐 Şifre Ayarları</div><div id="ppPwSection"></div></div>
