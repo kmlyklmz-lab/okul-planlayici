@@ -80,14 +80,22 @@ function saveNoteItem(editId) {
   if(!content){showToast('❗ İçerik boş olamaz!','#ef4444');return;}
   const notes=getNotes2();
   const today=new Date().toLocaleDateString('tr-TR');
-  if(editId){const i=notes.findIndex(n=>n.id===editId);if(i!==-1)notes[i]={...notes[i],subjectId:subjectId||null,title,content};}
-  else notes.push({id:uid(),subjectId:subjectId||null,title,content,createdAt:today});
+  if(editId){
+    const i=notes.findIndex(n=>n.id===editId);
+    if(i!==-1) notes[i]={...notes[i],subjectId:subjectId||null,title,content};
+    if (typeof AppDB !== 'undefined') AppDB.logActivity('NOT_KAYIT', `Not güncellendi: ${title}`);
+  } else {
+    notes.push({id:uid(),subjectId:subjectId||null,title,content,createdAt:today});
+    if (typeof AppDB !== 'undefined') AppDB.logActivity('NOT_KAYIT', `Yeni not eklendi: ${title}`);
+  }
   saveNotes2(notes); closeModal(); renderNotes();
   showToast(editId?'✅ Not güncellendi!':'✅ Not eklendi!','#10b981');
 }
 
 function delNote(id) {
+  const n = getNotes2().find(item=>item.id===id);
   if(!confirm('Bu notu silmek istediğinden emin misin?')) return;
+  if (n && typeof AppDB !== 'undefined') AppDB.logActivity('NOT_SILME', `Not silindi: ${n.title}`);
   saveNotes2(getNotes2().filter(n=>n.id!==id)); renderNotes();
   showToast('🗑️ Not silindi!','#64748b');
 }

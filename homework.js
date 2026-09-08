@@ -104,21 +104,32 @@ function saveHwItem(editId) {
   const prEl=document.querySelector('.prio-btn.sel');
   const priority=prEl?prEl.dataset.prio:'normal';
   const hw=getHw();
-  if(editId){const i=hw.findIndex(h=>h.id===editId);if(i!==-1)hw[i]={...hw[i],subjectId,title,dueDate,priority,note};}
-  else hw.push({id:uid(),subjectId,title,dueDate,priority,note,done:false,createdAt:new Date().toISOString().slice(0,10)});
+  if(editId){
+    const i=hw.findIndex(h=>h.id===editId);
+    if(i!==-1) hw[i]={...hw[i],subjectId,title,dueDate,priority,note};
+    if (typeof AppDB !== 'undefined') AppDB.logActivity('ODEV_EKLEME', `Ödev güncellendi: ${title}`, `Son Tarih: ${dueDate || 'Yok'}`);
+  } else {
+    hw.push({id:uid(),subjectId,title,dueDate,priority,note,done:false,createdAt:new Date().toISOString().slice(0,10)});
+    if (typeof AppDB !== 'undefined') AppDB.logActivity('ODEV_EKLEME', `Yeni ödev eklendi: ${title}`, `Son Tarih: ${dueDate || 'Yok'}`);
+  }
   saveHw2(hw); closeModal(); renderHomework();
   showToast(editId?'✅ Ödev güncellendi!':'✅ Ödev eklendi!','#10b981');
 }
 
 function togHwDone(id) {
   const hw=getHw(); const i=hw.findIndex(h=>h.id===id);
-  if(i!==-1) hw[i].done=!hw[i].done;
+  if(i!==-1) {
+    hw[i].done=!hw[i].done;
+    if (typeof AppDB !== 'undefined') AppDB.logActivity('ODEV_TAMAMLAMA', `${hw[i].title} (${hw[i].done ? 'Tamamlandı' : 'Bekliyor'})`);
+  }
   saveHw2(hw); renderHomework();
-  if(hw[i].done) showToast('🎉 Ödev tamamlandı!','#10b981');
+  if(hw[i] && hw[i].done) showToast('🎉 Ödev tamamlandı!','#10b981');
 }
 
 function delHw(id) {
+  const item = getHw().find(h=>h.id===id);
   if(!confirm('Bu ödevi silmek istediğinden emin misin?')) return;
+  if (item && typeof AppDB !== 'undefined') AppDB.logActivity('ODEV_SILME', `Ödev silindi: ${item.title}`);
   saveHw2(getHw().filter(h=>h.id!==id)); renderHomework();
   showToast('🗑️ Ödev silindi!','#64748b');
 }

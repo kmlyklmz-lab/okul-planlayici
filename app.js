@@ -1066,6 +1066,27 @@ function copyParentSummaryReport(studentId) {
 // ─── DATABASE MODAL & CRUD LOGS ─────────────────────
 let _dbCurTab = 'cloud';
 
+function getLogActionMeta(action) {
+  const map = {
+    'GIRIS': { icon: '🟢', label: 'Öğrenci Girişi', color: '#166534', bg: '#dcfce7' },
+    'VELI_GIRIS': { icon: '👨‍👩‍👧', label: 'Veli Girişi', color: '#6d28d9', bg: '#ede9fe' },
+    'CIKIS': { icon: '🚪', label: 'Çıkış', color: '#475569', bg: '#f1f5f9' },
+    'OGRENCI_EKLEME': { icon: '👤', label: 'Öğrenci Eklendi', color: '#1e40af', bg: '#dbeafe' },
+    'ODEV_EKLEME': { icon: '📝', label: 'Ödev Eklendi', color: '#7c3aed', bg: '#f3e8ff' },
+    'ODEV_TAMAMLAMA': { icon: '✅', label: 'Ödev Durumu', color: '#059669', bg: '#d1fae5' },
+    'ODEV_SILME': { icon: '🗑️', label: 'Ödev Silindi', color: '#b91c1c', bg: '#fee2e2' },
+    'SINAV_KAYIT': { icon: '📊', label: 'Sınav Kaydı', color: '#0369a1', bg: '#e0f2fe' },
+    'SINAV_SILME': { icon: '🗑️', label: 'Sınav Silindi', color: '#b91c1c', bg: '#fee2e2' },
+    'NOT_KAYIT': { icon: '🗒️', label: 'Not Kaydı', color: '#c2410c', bg: '#ffedd5' },
+    'NOT_SILME': { icon: '🗑️', label: 'Not Silindi', color: '#b91c1c', bg: '#fee2e2' },
+    'PROGRAM_GUNCELLEME': { icon: '📅', label: 'Program Güncelleme', color: '#4338ca', bg: '#e0e7ff' },
+    'YEDEK_ALINDI': { icon: '💾', label: 'Yedek İndirildi', color: '#047857', bg: '#d1fae5' },
+    'YEDEK_YUKLENDI': { icon: '📥', label: 'Yedek Yüklendi', color: '#1d4ed8', bg: '#dbeafe' },
+    'VERI_AKTARIMI': { icon: '🔄', label: 'Veri Aktarımı', color: '#0369a1', bg: '#e0f2fe' }
+  };
+  return map[action] || { icon: '📌', label: action || 'İşlem', color: '#334155', bg: '#f1f5f9' };
+}
+
 async function openDatabaseModal(initialTab = null) {
   _dbCurTab = initialTab || 'cloud';
   await renderDatabaseModalContent();
@@ -1080,7 +1101,7 @@ async function renderDatabaseModalContent() {
     <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;max-height:75vh;overflow-y:auto;">
       <!-- Tabs -->
       <div class="db-tabs" style="overflow-x:auto;white-space:nowrap;">
-        <button class="db-tab-btn ${_dbCurTab === 'cloud' ? 'active' : ''}" onclick="setDbTab('cloud')">🔥 Firebase Realtime DB</button>
+        <button class="db-tab-btn ${_dbCurTab === 'cloud' ? 'active' : ''}" onclick="setDbTab('cloud')">🔥 Firebase Bulut & Linkler</button>
         <button class="db-tab-btn ${_dbCurTab === 'logs' ? 'active' : ''}" onclick="setDbTab('logs')">📜 İşlem Kütüğü (${logs.length})</button>
         <button class="db-tab-btn ${_dbCurTab === 'backup' ? 'active' : ''}" onclick="setDbTab('backup')">💾 JSON Yedekleme</button>
         <button class="db-tab-btn ${_dbCurTab === 'stats' ? 'active' : ''}" onclick="setDbTab('stats')">📊 DB Durumu</button>
@@ -1089,60 +1110,91 @@ async function renderDatabaseModalContent() {
       <!-- Tab: Cloud Firebase DB -->
       <div id="dbTabCloud" style="${_dbCurTab === 'cloud' ? 'display:flex;flex-direction:column;gap:10px;' : 'display:none;'}">
         <div class="ai-card" style="background:#eff6ff;border-color:#bfdbfe;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <h4 style="color:#1e40af;">🔥 Google Firebase NoSQL Realtime Engine</h4>
-            <span style="background:#10b981;color:#fff;font-size:.66rem;font-weight:900;padding:3px 8px;border-radius:20px;">CANLI & AKTİF</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
+            <h4 style="color:#1e40af;margin-bottom:0;">🔥 Google Firebase Realtime NoSQL Bulut</h4>
+            <span style="background:#10b981;color:#fff;font-size:.66rem;font-weight:900;padding:3px 9px;border-radius:20px;">🟢 CANLI AKIŞ (SSE) AKTİF</span>
           </div>
           <p style="font-size:.76rem;color:#1e3a8a;line-height:1.45;">
-            Tüm öğrenci kayıtları, ders programları, ödevler ve sınavlar <strong>Google Firebase Realtime Database</strong> üzerinde anlık senkronize edilmektedir.
+            Tüm öğrenci profilleri, haftalık ders programları, ödevler ve sınavlar Google Firebase sunucularında gerçek zamanlı barındırılmaktadır.
           </p>
-          <div style="background:#fff;border:1px solid #bfdbfe;border-radius:8px;padding:9px;margin-top:6px;font-family:monospace;font-size:.72rem;word-break:break-all;color:#1e40af;">
-            📡 <strong>Bulut Adresi:</strong><br/>
-            ${CloudDB.databaseUrl}
+
+          <!-- Firebase Direct Link Box -->
+          <div style="background:#fff;border:1.5px solid #93c5fd;border-radius:10px;padding:10px;margin-top:8px;">
+            <div style="font-weight:800;color:#1e40af;font-size:.76rem;margin-bottom:4px;display:flex;align-items:center;gap:5px;">
+              <span>📡</span> <span>Canlı Veritabanı Adresi (REST JSON):</span>
+            </div>
+            <div style="font-family:monospace;font-size:.72rem;background:#f8faff;padding:7px;border-radius:6px;border:1px solid #e2e8f0;word-break:break-all;color:#0f172a;margin-bottom:8px;">
+              ${CloudDB.databaseUrl}
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <a href="${CloudDB.databaseUrl}" target="_blank" class="btn-login" style="margin-top:0;padding:6px 12px;background:#3b82f6;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:4px;font-size:.74rem;width:auto;">
+                🌐 Tarayıcıda Aç (JSON Gör)
+              </a>
+              <button class="btn-login" style="margin-top:0;padding:6px 12px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;font-size:.74rem;width:auto;" onclick="navigator.clipboard.writeText('${CloudDB.databaseUrl}');showToast('📋 Firebase linki kopyalandı!','success');">
+                📋 Linki Kopyala
+              </button>
+              <a href="https://console.firebase.google.com/" target="_blank" class="btn-login" style="margin-top:0;padding:6px 12px;background:#f59e0b;color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:4px;font-size:.74rem;width:auto;">
+                🚀 Firebase Konsolu
+              </a>
+            </div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
-            <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;" onclick="CloudDB.pullFromCloud().then(()=>showToast('☁️ Firebase buluttan eşitlendi!','success'))">
+
+          <!-- Instant Sync Actions -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+            <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;" onclick="CloudDB.pullFromCloud().then(()=>showToast('☁️ Firebase buluttan eşitlendi!','success'))">
               🔄 Buluttan Şimdi Çek
             </button>
-            <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#10b981,#059669);color:#fff;" onclick="CloudDB.pushToCloud(allStudents()).then(()=>showToast('☁️ Firebase buluta yüklendi!','success'))">
+            <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#059669,#10b981);color:#fff;" onclick="CloudDB.pushToCloud(allStudents()).then(()=>showToast('☁️ Firebase buluta yüklendi!','success'))">
               ⚡ Şimdi Buluta Yolla
             </button>
           </div>
         </div>
 
         <div class="ai-card">
-          <h4>📱 Öğrenci & Veli Çapraz Cihaz Kullanımı</h4>
+          <h4>📱 Eşzamanlı Cihaz Senkronizasyonu</h4>
           <p style="font-size:.76rem;color:var(--muted);line-height:1.4;">
-            Öğrenci bilgisayardan veya tabletten ödevlerini girdiğinde, veli kendi telefonundaki <strong>👨‍👩‍👧 Veli Paneli</strong> üzerinden aynı saniye içerisinde canlı olarak takip edebilir.
+            Öğrenci tabletten veya bilgisayardan ders programını doldurduğunda ya da ödev eklediğinde, veli kendi ekranından <strong>anında 0 ms gecikmeyle</strong> güncellemeleri görebilir.
           </p>
-          <button class="btn-login" style="margin-top:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;" onclick="closeModal();openParentModal();">
-            👨‍👩‍👧 Veli Panelini Aç
-          </button>
         </div>
       </div>
 
       <!-- Tab: CRUD Logs -->
       <div id="dbTabLogs" style="${_dbCurTab === 'logs' ? 'display:flex;flex-direction:column;gap:10px;' : 'display:none;'}">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-size:.76rem;color:var(--muted);">IndexedDB ve LocalStorage üzerinde gerçekleşen son işlemler:</span>
-          <button class="btn-sm" onclick="clearDbLogsUI()">🧹 Kütüğü Temizle</button>
+          <span style="font-size:.76rem;color:var(--muted);font-weight:700;">Son Sistem ve Kullanıcı Hareketleri:</span>
+          <button class="btn-sm" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;" onclick="clearDbLogsUI()">🧹 Kütüğü Temizle</button>
         </div>
-        <div style="max-height:260px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;">
-          <table class="db-logs-table">
-            <thead>
-              <tr><th>Zaman</th><th>İşlem</th><th>Koleksiyon</th><th>Detay</th></tr>
-            </thead>
-            <tbody>
-              ${logs.length ? logs.map(l => `
-                <tr>
-                  <td style="color:var(--muted);white-space:nowrap;">${l.time ? l.time.slice(11,19) : '-'}</td>
-                  <td><span class="db-badge ${l.type === 'DELETE' ? 'islem-silme' : (l.type === 'INSERT' ? 'islem-ekleme' : '')}">${l.type}</span></td>
-                  <td><strong>${escH(l.store)}</strong></td>
-                  <td style="color:var(--muted);">${escH(l.detail)}</td>
-                </tr>
-              `).join('') : '<tr><td colspan="4" style="text-align:center;padding:14px;color:var(--muted);">Henüz kayıtlı işlem yok.</td></tr>'}
-            </tbody>
-          </table>
+        <div style="max-height:300px;overflow-y:auto;border:1.5px solid var(--bdr);border-radius:10px;background:#fff;">
+          ${logs.length ? `
+            <div style="display:flex;flex-direction:column;">
+              ${logs.map((l, idx) => {
+                const meta = getLogActionMeta(l.action || l.type);
+                const desc = l.desc || l.detail || l.store || 'İşlem yapıldı';
+                const time = l.dateStr || (l.timestamp ? new Date(l.timestamp).toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '-');
+                return `
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:${idx === logs.length - 1 ? 'none' : '1px solid #f1f5f9'};gap:10px;">
+                    <div style="display:flex;align-items:center;gap:9px;min-width:0;">
+                      <span style="font-size:1.1rem;flex-shrink:0;">${meta.icon}</span>
+                      <div style="min-width:0;">
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                          <span style="background:${meta.bg};color:${meta.color};font-size:.65rem;font-weight:900;padding:2px 7px;border-radius:6px;">${meta.label}</span>
+                          <strong style="font-size:.78rem;color:#1e293b;">${escH(desc)}</strong>
+                        </div>
+                        ${l.details ? `<div style="font-size:.68rem;color:var(--muted);margin-top:2px;">${escH(l.details)}</div>` : ''}
+                      </div>
+                    </div>
+                    <div style="font-size:.68rem;color:var(--muted);font-weight:700;white-space:nowrap;text-align:right;">
+                      ${time}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : `
+            <div style="text-align:center;padding:24px;color:var(--muted);font-size:.78rem;font-weight:700;">
+              ✨ Henüz kayıtlı bir işlem kütüğü bulunmuyor.
+            </div>
+          `}
         </div>
       </div>
 
@@ -1182,7 +1234,7 @@ async function renderDatabaseModalContent() {
     </div>
   `;
 
-  openModal('💾 Google Firebase NoSQL & Kalıcı Veritabanı', html);
+  openModal('💾 Google Firebase NoSQL & Veritabanı Merkezi', html);
 }
 
 function setDbTab(tabName) {

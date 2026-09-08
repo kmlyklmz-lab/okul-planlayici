@@ -99,14 +99,25 @@ function saveExamItem(editId) {
   if(score<0||score>100){showToast('❗ Puan 0–100 arası olmalı!','#ef4444');return;}
   const note=document.getElementById('exNt')?.value.trim()||'';
   const exams=getExams2();
-  if(editId){const i=exams.findIndex(e=>e.id===editId);if(i!==-1)exams[i]={...exams[i],subjectId,type,date,score,note};}
-  else exams.push({id:uid(),subjectId,type,date,score,note});
+  const sub=getSubjs().find(s=>s.id===subjectId);
+  const subName=sub?sub.name:'Ders';
+
+  if(editId){
+    const i=exams.findIndex(e=>e.id===editId);
+    if(i!==-1) exams[i]={...exams[i],subjectId,type,date,score,note};
+    if (typeof AppDB !== 'undefined') AppDB.logActivity('SINAV_KAYIT', `Sınav güncellendi: ${subName}`, `Puan: ${score} · Tarih: ${date}`);
+  } else {
+    exams.push({id:uid(),subjectId,type,date,score,note});
+    if (typeof AppDB !== 'undefined') AppDB.logActivity('SINAV_KAYIT', `Yeni sınav girildi: ${subName}`, `Puan: ${score} · Tarih: ${date}`);
+  }
   saveExams2(exams); closeModal(); renderExams();
   showToast(editId?'✅ Sınav güncellendi!':'✅ Sınav eklendi!','#10b981');
 }
 
 function delExam(id) {
+  const ex = getExams2().find(e=>e.id===id);
   if(!confirm('Bu sınav sonucunu silmek istediğinden emin misin?')) return;
+  if (ex && typeof AppDB !== 'undefined') AppDB.logActivity('SINAV_SILME', `Sınav silindi (Puan: ${ex.score})`);
   saveExams2(getExams2().filter(e=>e.id!==id)); renderExams();
   showToast('🗑️ Sınav silindi!','#64748b');
 }
