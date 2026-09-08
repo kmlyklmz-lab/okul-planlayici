@@ -520,64 +520,31 @@ async function renderDatabaseModalContent() {
     <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;max-height:75vh;overflow-y:auto;">
       <!-- Tabs -->
       <div class="db-tabs" style="overflow-x:auto;white-space:nowrap;">
+        <button class="db-tab-btn ${_dbCurTab === 'transfer' ? 'active' : ''}" onclick="setDbTab('transfer')">📱 Cihazlar Arası Aktar & QR</button>
         <button class="db-tab-btn ${_dbCurTab === 'logs' ? 'active' : ''}" onclick="setDbTab('logs')">📜 İşlem Kütüğü (${logs.length})</button>
-        <button class="db-tab-btn ${_dbCurTab === 'cloud' ? 'active' : ''}" onclick="setDbTab('cloud')">☁️ Bulut NoSQL</button>
-        <button class="db-tab-btn ${_dbCurTab === 'backup' ? 'active' : ''}" onclick="setDbTab('backup')">💾 Yedekleme</button>
-        <button class="db-tab-btn ${_dbCurTab === 'stats' ? 'active' : ''}" onclick="setDbTab('stats')">📊 Durum</button>
+        <button class="db-tab-btn ${_dbCurTab === 'backup' ? 'active' : ''}" onclick="setDbTab('backup')">💾 JSON Yedekleme</button>
+        <button class="db-tab-btn ${_dbCurTab === 'stats' ? 'active' : ''}" onclick="setDbTab('stats')">📊 DB Durumu</button>
       </div>
 
-      <!-- Tab 1: Logs -->
-      <div id="dbTabLogs" style="${_dbCurTab === 'logs' ? 'display:block;' : 'display:none;'}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-          <span style="font-size:.74rem;color:var(--muted);font-weight:700;">Son ekleme, silme, güncelleme ve planlama işlemleri:</span>
-          <div style="display:flex;gap:6px;">
-            <button class="btn-sm" onclick="clearDbLogsUI()">🗑️ Logları Temizle</button>
-            <button class="btn-sm" onclick="renderDatabaseModalContent()">🔄 Yenile</button>
-          </div>
-        </div>
-        <div style="max-height:280px;overflow-y:auto;border:1px solid var(--bdr);border-radius:10px;background:#fff;">
-          <table class="db-logs-table">
-            <thead>
-              <tr>
-                <th>Zaman</th>
-                <th>İşlem</th>
-                <th>Açıklama</th>
-                <th>Detay</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${logs.length ? logs.map(l => `
-                <tr>
-                  <td style="white-space:nowrap;font-size:.68rem;color:var(--muted);">${l.dateStr || ''}</td>
-                  <td><span class="db-badge ${l.action.includes('SIL') ? 'islem-silme' : (l.action.includes('EKLE') ? 'islem-ekleme' : '')}">${escH(l.action)}</span></td>
-                  <td><strong>${escH(l.desc)}</strong></td>
-                  <td style="font-size:.7rem;color:var(--muted);">${escH(l.details || '')}</td>
-                </tr>
-              `).join('') : '<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--muted);">Henüz kayıtlı bir işlem kütüğü yok.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Tab 2: Cloud NoSQL -->
-      <div id="dbTabCloud" style="${_dbCurTab === 'cloud' ? 'display:flex;flex-direction:column;gap:10px;' : 'display:none;'}">
+      <!-- Tab: Transfer & QR -->
+      <div id="dbTabTransfer" style="${_dbCurTab === 'transfer' ? 'display:flex;flex-direction:column;gap:10px;' : 'display:none;'}">
         <div class="ai-card" style="background:#eff6ff;border-color:#bfdbfe;">
-          <h4 style="color:#1e40af;">☁️ Otomatik Bulut NoSQL Motoru</h4>
+          <h4 style="color:#1e40af;">📱 Telefon veya Başka Tarayıcıya Anında Aktar</h4>
           <p style="font-size:.76rem;color:#1e3a8a;line-height:1.45;">
-            Tüm kayıtlı öğrencileriniz (<strong>${students.length} Öğrenci</strong>), ders programları, ödevler, sınavlar ve notlar bulutta saklanır ve tüm tarayıcı/cihazlarınızda otomatik senkronize edilir.
+            Hiçbir üyelik, şifre veya 3. taraf girişi gerekmeden; tüm öğrencilerinizi (<strong>${students.length} Kayıtlı Öğrenci</strong>), ders programlarınızı ve notlarınızı telefonunuza veya başka bir bilgisayara anında aktarın.
           </p>
-          <div style="background:#fff;border:1.5px solid #93c5fd;border-radius:10px;padding:12px;margin-top:8px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;">
-              <span style="font-size:.76rem;font-weight:700;color:#1e3a8a;">Bulut Durumu:</span>
-              <span style="font-weight:900;color:#10b981;font-size:.82rem;">🟢 Canlı & Otomatik Eşitleme Aktif</span>
+
+          <div style="display:flex;gap:14px;align-items:center;background:#fff;border:1.5px solid #93c5fd;border-radius:10px;padding:12px;margin-top:6px;flex-wrap:wrap;">
+            <div style="background:#fff;padding:6px;border:1px solid var(--bdr);border-radius:8px;display:flex;justify-content:center;align-items:center;margin:0 auto;">
+              <img src="${CloudDB.getQRCodeUrl()}" alt="QR Kod" style="width:160px;height:160px;display:block;border-radius:6px;"/>
             </div>
-            <div style="font-size:.72rem;color:var(--muted);margin-top:6px;line-height:1.4;">
-              İnternet bağlantısı varken hiçbir kod girmeden herhangi bir cihazdan uygulamayı açtığınızda tüm öğrencileriniz anında gelir. Çevrimdışıyken yapılan değişiklikler ise internet geldiği anda otomatik olarak buluta yüklenir.
+            <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:8px;">
+              <div style="font-weight:700;color:#1e40af;font-size:.82rem;">1. Telefon Kamerasıyla Okutun:</div>
+              <div style="font-size:.72rem;color:var(--muted);line-height:1.4;">Telefonunuzun kamerasını soldaki QR koda tutun; açılan linke tıkladığınız anda tüm verileriniz telefonunuza aktarılır.</div>
+              
+              <div style="font-weight:700;color:#1e40af;font-size:.82rem;margin-top:4px;">2. Veya Linki Kopyalayın:</div>
+              <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;" onclick="navigator.clipboard.writeText(CloudDB.getShareUrl());showToast('📋 Hızlı aktarma linki panoya kopyalandı!','success');">📋 Hızlı Aktarma Linkini Kopyala</button>
             </div>
-          </div>
-          <div style="display:flex;gap:6px;margin-top:10px;">
-            <button class="btn-login" style="flex:1;margin-top:0;background:#3b82f6;color:#fff;" onclick="CloudDB.pushToCloud(allStudents()).then(()=>showToast('☁️ Tüm öğrenciler buluta gönderildi!','success'))">☁️ Buluta Manuel Gönder</button>
-            <button class="btn-login" style="flex:1;margin-top:0;background:#10b981;color:#fff;" onclick="CloudDB.pullFromCloud().then(()=>{renderDatabaseModalContent();showToast('🔄 Buluttan güncellendi!','success');})">🔄 Buluttan Şimdi Çek</button>
           </div>
         </div>
       </div>
