@@ -499,25 +499,64 @@ function importData() {
   document.body.removeChild(inp);
 }
 
+// ─── CLOUD NOSQL LOGIN & SYNC MODALS ────────────────
+function openCloudLoginModal() {
+  const html = `
+    <div style="font-size:.82rem;display:flex;flex-direction:column;gap:12px;">
+      <p style="color:var(--muted);line-height:1.45;">
+        Farklı bir bilgisayar veya telefondan aldığınız <strong>Bulut Senkronizasyon Kodunu</strong> girerek öğrenci profilinizi ve tüm ders programınızı bu tarayıcıya tek tıkla aktarın:
+      </p>
+      <div>
+        <label class="fl">Bulut Senkronizasyon Kodu</label>
+        <input type="text" id="cloudSyncCodeInput" class="field" placeholder="Örn: OKUL-8F2K" style="text-transform:uppercase;font-family:monospace;font-weight:900;letter-spacing:1px;font-size:1.05rem;" onkeydown="if(event.key==='Enter') doImportByCloudCode()"/>
+      </div>
+      <button class="btn-login" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;" onclick="doImportByCloudCode()">☁️ Buluttan Öğrenciyi Çek & Eşle</button>
+    </div>
+  `;
+  openModal('☁️ Bulut NoSQL ile Öğrenci Getir', html);
+  setTimeout(() => {
+    const inp = document.getElementById('cloudSyncCodeInput');
+    if (inp) inp.focus();
+  }, 150);
+}
+
+async function doImportByCloudCode() {
+  const inp = document.getElementById('cloudSyncCodeInput');
+  if (!inp) return;
+  const code = inp.value.trim().toUpperCase();
+  if (!code) {
+    showToast('❗ Lütfen bir kod girin!', 'error');
+    return;
+  }
+  if (typeof CloudDB !== 'undefined') {
+    const res = await CloudDB.importStudentBySyncCode(code);
+    if (res) {
+      closeModal();
+    }
+  }
+}
+
 // ─── DATABASE MODAL & CRUD LOGS ─────────────────────
 let _dbCurTab = 'logs';
 
-async function openDatabaseModal() {
-  _dbCurTab = 'logs';
+async function openDatabaseModal(initialTab = null) {
+  _dbCurTab = initialTab || 'logs';
   await renderDatabaseModalContent();
 }
 
 async function renderDatabaseModalContent() {
   const stats = (typeof AppDB !== 'undefined') ? await AppDB.getStats() : { studentCount: allStudents().length, logCount: 0, storageType: 'LocalStorage' };
   const logs = (typeof AppDB !== 'undefined') ? await AppDB.getLogs(60) : [];
+  const cur = curStudent();
 
   let html = `
     <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;max-height:75vh;overflow-y:auto;">
       <!-- Tabs -->
-      <div class="db-tabs">
+      <div class="db-tabs" style="overflow-x:auto;white-space:nowrap;">
         <button class="db-tab-btn ${_dbCurTab === 'logs' ? 'active' : ''}" onclick="setDbTab('logs')">📜 İşlem Kütüğü (${logs.length})</button>
-        <button class="db-tab-btn ${_dbCurTab === 'backup' ? 'active' : ''}" onclick="setDbTab('backup')">💾 Yedekleme & Sıfırlama</button>
-        <button class="db-tab-btn ${_dbCurTab === 'stats' ? 'active' : ''}" onclick="setDbTab('stats')">📊 Veritabanı Durumu</button>
+        <button class="db-tab-btn ${_dbCurTab === 'cloud' ? 'active' : ''}" onclick="setDbTab('cloud')">☁️ Bulut NoSQL</button>
+        <button class="db-tab-btn ${_dbCurTab === 'backup' ? 'active' : ''}" onclick="setDbTab('backup')">💾 Yedekleme</button>
+        <button class="db-tab-btn ${_dbCurTab === 'stats' ? 'active' : ''}" onclick="setDbTab('stats')">📊 Durum</button>
       </div>
 
       <!-- Tab 1: Logs -->
@@ -553,7 +592,33 @@ async function renderDatabaseModalContent() {
         </div>
       </div>
 
-      <!-- Tab 2: Backup & Restore -->
+      <!-- Tab 2: Cloud NoSQL -->
+      <div id="dbTabCloud" style="${_dbCurTab === 'cloud' ? 'display:flex;flex-direction:column;gap:10px;' : 'display:none;'}">
+        <div class="ai-card" style="background:#eff6ff;border-color:#bfdbfe;">
+          <h4 style="color:#1e40af;">☁️ Bulut NoSQL Senkronizasyon Durumu</h4>
+          <p style="font-size:.76rem;color:#1e3a8a;">Tüm cihazlarınız (Chrome, Edge, Safari, telefon vb.) arasında anlık veri senkronizasyonu aktiftir.</p>
+          ${cur ? `
+            <div style="background:#fff;border:1.5px solid #93c5fd;border-radius:10px;padding:10px;margin-top:8px;">
+              <div style="font-size:.72rem;color:var(--muted);font-weight:700;">Aktif Öğrenci (${cur.name}) Eşleme Kodu:</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
+                <span style="font-family:monospace;font-size:1.15rem;font-weight:900;color:#1d4ed8;letter-spacing:1px;">${cur.syncCode || 'YOK'}</span>
+                <button class="notice-imp" style="padding:4px 10px;font-size:.72rem;" onclick="navigator.clipboard.writeText('${cur.syncCode || ''}');showToast('📋 Kod kopyalandı!','success');">📋 Kodu Kopyala</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:10px;">
+              <button class="btn-login" style="flex:1;margin-top:0;background:#3b82f6;color:#fff;" onclick="CloudDB.pushStudent(curStudent()).then(()=>showToast('☁️ Bulut NoSQL güncellendi!','success'))">☁️ Şimdi Buluta Gönder</button>
+              <button class="btn-login" style="flex:1;margin-top:0;background:#10b981;color:#fff;" onclick="CloudDB.pullStudent(curStudent().syncCode).then(s=>{if(s){updateStudent(s);renderDatabaseModalContent();showToast('🔄 Buluttan çekildi!','success');}})">🔄 Buluttan Çek</button>
+            </div>
+          ` : '<p style="font-size:.76rem;color:var(--muted);margin-top:6px;">Bir öğrenci profiliyle giriş yaptığınızda özel eşleme kodu burada görünecektir.</p>'}
+        </div>
+        <div class="ai-card">
+          <h4>📱 Başka Cihazdan Öğrenci Eşle</h4>
+          <p style="font-size:.76rem;color:var(--muted);">Farklı bir tarayıcıda oluşturduğunuz kodu girerek profili bu cihaza getirin.</p>
+          <button class="btn-login" style="background:#6366f1;color:#fff;margin-top:6px;" onclick="openCloudLoginModal()">☁️ Bulut Kodu ile Öğrenci Çek</button>
+        </div>
+      </div>
+
+      <!-- Tab 3: Backup & Restore -->
       <div id="dbTabBackup" style="${_dbCurTab === 'backup' ? 'display:flex;flex-direction:column;gap:10px;' : 'display:none;'}">
         <div class="ai-card">
           <h4>📥 JSON Veritabanı Yedeği İndir</h4>
@@ -572,10 +637,10 @@ async function renderDatabaseModalContent() {
         </div>
       </div>
 
-      <!-- Tab 3: Stats -->
+      <!-- Tab 4: Stats -->
       <div id="dbTabStats" style="${_dbCurTab === 'stats' ? 'display:block;' : 'display:none;'}">
         <div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:8px;">
-          Veritabanı Katmanı: <strong style="color:#10b981;">${stats.storageType}</strong>
+          Veritabanı Katmanı: <strong style="color:#10b981;">${stats.storageType}</strong> · <strong style="color:#3b82f6;">Cloud NoSQL Aktif</strong>
         </div>
         <div class="db-stat-grid">
           <div class="db-stat-card"><div class="db-stat-val">${stats.studentCount}</div><div class="db-stat-lbl">Kayıtlı Öğrenci</div></div>
@@ -589,7 +654,7 @@ async function renderDatabaseModalContent() {
     </div>
   `;
 
-  openModal('💾 Kalıcı Veritabanı & İşlem Kütüğü (IndexedDB)', html);
+  openModal('💾 Kalıcı Veritabanı & İşlem Kütüğü (IndexedDB + Cloud NoSQL)', html);
 }
 
 function setDbTab(tabName) {
@@ -613,6 +678,9 @@ async function resetDbUI() {
 document.addEventListener('DOMContentLoaded', async () => {
   if (typeof AppDB !== 'undefined' && AppDB.init) {
     await AppDB.init();
+  }
+  if (typeof CloudDB !== 'undefined' && CloudDB.init) {
+    CloudDB.init();
   }
   renderAvatarPicker();
   renderLoginScreen();

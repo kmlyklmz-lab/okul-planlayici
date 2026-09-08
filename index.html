@@ -48,7 +48,10 @@
         <div id="loginErr" class="err-msg">❌ Şifre yanlış!</div>
         <button class="btn-login" onclick="doLogin()">🚀 Giriş Yap</button>
       </div>
-      <button class="btn-new-student" onclick="showScreen('register')">➕ Yeni Öğrenci Ekle</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+        <button class="btn-new-student" style="margin-top:0;" onclick="showScreen('register')">➕ Yeni Öğrenci</button>
+        <button class="btn-new-student" style="margin-top:0;background:rgba(99,102,241,0.25);border-color:rgba(199,210,254,0.5);" onclick="openCloudLoginModal()">☁️ Buluttan Getir</button>
+      </div>
     </div>
   </div>
 </div>
@@ -262,6 +265,7 @@
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script src="db.js"></script>
+<script src="cloud-db.js"></script>
 <script src="app.js"></script>
 <script src="schedule.js"></script>
 <script src="subjects.js"></script>
