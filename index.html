@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <title>Okul Asistanım 🎒</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#3b82f6"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <!-- iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Okul"/>
+  <link rel="apple-touch-icon" href="icon-192.png"/>
+  <!-- Fallback icon (inline SVG as data URI for browsers without PNG) -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎒</text></svg>"/>
+
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Baloo+2:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+<!-- ── LOGIN ── -->
+<div id="scr-login" class="screen active">
+  <div class="login-wrap">
+    <div class="login-logo"><span class="logo-icon">🎒</span><h1>Okul Asistanım</h1><p>Profilini seç ve başla!</p></div>
+
+    <!-- Data safety notice -->
+    <div class="data-notice">
+      <span>💾</span>
+      <div>
+        <strong>Veriler IndexedDB Veritabanında Saklanır</strong>
+        Tüm bilgiler tarayıcınızın yerel veritabanında kalıcı olarak saklanır.
+      </div>
+      <div style="display:flex;gap:6px;margin-left:auto;flex-wrap:wrap;">
+        <button class="notice-imp" onclick="openDatabaseModal()">💾 Veritabanı</button>
+        <button class="notice-imp" onclick="importData()">📂 Yedek Yükle</button>
+      </div>
+    </div>
+    <div class="glass-card">
+      <h2 class="card-label">👤 Öğrenci Seç</h2>
+      <div id="studentGrid" class="student-grid"></div>
+      <div id="loginPwSection" class="pw-section">
+        <div class="selected-info"><span id="selAvatar"></span><span id="selName"></span></div>
+        <div class="pw-wrap"><input id="loginPw" type="password" placeholder="Şifreni gir…" onkeydown="if(event.key==='Enter')doLogin()"/><span class="pw-eye" onclick="togglePw('loginPw',this)">👁️</span></div>
+        <div id="loginErr" class="err-msg">❌ Şifre yanlış!</div>
+        <button class="btn-login" onclick="doLogin()">🚀 Giriş Yap</button>
+      </div>
+      <button class="btn-new-student" onclick="showScreen('register')">➕ Yeni Öğrenci Ekle</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── REGISTER ── -->
+<div id="scr-register" class="screen">
+  <div class="login-wrap">
+    <div class="reg-header"><button class="btn-back" onclick="showScreen('login')">← Geri</button><h2>Yeni Öğrenci 🌟</h2></div>
+    <div class="glass-card">
+      <label class="fl">Avatar Seç</label>
+      <div id="avatarPicker" class="avatar-picker"></div>
+      <label class="fl">Adın</label>
+      <input id="regName" type="text" class="field" placeholder="Adını yaz…" maxlength="20"/>
+      <label class="fl">Sınıf</label>
+      <select id="regGrade" class="field">
+        <option value="1">1. Sınıf</option><option value="2">2. Sınıf</option>
+        <option value="3">3. Sınıf</option><option value="4">4. Sınıf</option>
+        <option value="5" selected>5. Sınıf</option><option value="6">6. Sınıf</option>
+        <option value="7">7. Sınıf</option><option value="8">8. Sınıf</option>
+      </select>
+      <label class="fl">Şifre <span style="font-weight:600;opacity:.65;font-size:.7rem">(isteğe bağlı)</span></label>
+      <div class="pw-wrap"><input id="regPw" type="password" class="field" placeholder="Boş bırakılabilir — şifresiz giriş"/><span class="pw-eye" onclick="togglePw('regPw',this)">👁️</span></div>
+      <label class="fl">Şifre Tekrar</label>
+      <div class="pw-wrap"><input id="regPw2" type="password" class="field" placeholder="Şifre girdiysen tekrar yaz…"/><span class="pw-eye" onclick="togglePw('regPw2',this)">👁️</span></div>
+      <div id="regErr" class="err-msg"></div>
+      <button class="btn-login" style="margin-top:10px" onclick="doRegister()">✅ Kaydı Tamamla</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── APP ── -->
+<div id="scr-app" class="screen">
+  <header class="app-header">
+    <div class="ah-logo">🎒 Okul Asistanım</div>
+    <div class="ah-right">
+      <button class="btn-db-header" onclick="openDatabaseModal()" title="Veritabanı & İşlem Kütüğü (IndexedDB)">💾 <span>Veritabanı</span></button>
+      <button class="pp-trigger" onclick="openProfile()">
+        <span id="ahAvatar" class="ah-av"></span>
+        <span id="ahName" class="ah-name"></span>
+        <span class="pp-arrow">▾</span>
+      </button>
+      <button class="btn-backup" onclick="exportData()" title="Tüm verileri yedekle">💾 Yedek Al</button>
+      <button class="btn-logout" onclick="doLogout()">Çıkış</button>
+    </div>
+  </header>
+
+  <div class="tab-area">
+
+    <!-- SCHEDULE -->
+    <div id="tab-schedule" class="tab-panel active">
+      <div class="sched-layout">
+        <aside class="sched-side">
+          <!-- Week nav -->
+          <div class="card"><div class="card-h">🗓️ Hafta</div><div class="card-b">
+            <div class="week-ctrl">
+              <button class="btn-wk" onclick="prevWeek()">←</button>
+              <span id="weekLabelTxt" class="week-lbl-txt">Bu Hafta</span>
+              <button class="btn-wk" onclick="nextWeek()">→</button>
+            </div>
+            <button class="btn-apply" onclick="copyLastWeek()" style="margin-top:9px;background:linear-gradient(135deg,#059669,#10b981)">📋 Geçen Haftayı Kopyala</button>
+          </div></div>
+          <!-- Bulk add -->
+          <div class="card"><div class="card-h">⚡ Toplu Ekle</div><div class="card-b">
+            <label class="fl" style="margin-bottom:4px">Aktivite</label>
+            <select id="bulkActSel" class="field-s"></select>
+            <div class="row2" style="margin-top:8px">
+              <div class="ig"><label>Başlangıç</label><input type="time" id="schStart" value="08:00"/></div>
+              <div class="ig"><label>Bitiş</label><input type="time" id="schEnd" value="14:00"/></div>
+            </div>
+            <label class="fl" style="margin-bottom:5px">Günler</label>
+            <div class="days-tog">
+              <button class="dtb on" data-d="1" onclick="togSchDay(this)">Pzt</button>
+              <button class="dtb on" data-d="2" onclick="togSchDay(this)">Sal</button>
+              <button class="dtb on" data-d="3" onclick="togSchDay(this)">Çar</button>
+              <button class="dtb on" data-d="4" onclick="togSchDay(this)">Per</button>
+              <button class="dtb on" data-d="5" onclick="togSchDay(this)">Cum</button>
+              <button class="dtb" data-d="6" onclick="togSchDay(this)">Cmt</button>
+              <button class="dtb" data-d="0" onclick="togSchDay(this)">Paz</button>
+            </div>
+            <button class="btn-apply" onclick="applyBulkActivity()">✅ Toplu Uygula</button>
+          </div></div>
+          <!-- Palette -->
+          <div class="card"><div class="card-h">🎨 Aktivite</div><div class="card-b">
+            <div id="paletteGrid" class="palette"></div>
+            <div style="font-size:.68rem;color:var(--muted);font-weight:700;text-align:center;margin-top:7px;">Seç → zaman dilimine tıkla</div>
+          </div></div>
+          <!-- Stats -->
+          <div class="card"><div class="card-h">📊 Günün Özeti</div><div class="card-b" style="display:flex;flex-direction:column;align-items:center">
+            <div class="ring-wrap">
+              <svg class="ring-svg" width="70" height="70" viewBox="0 0 70 70">
+                <defs><linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" style="stop-color:#3b82f6"/><stop offset="100%" style="stop-color:#8b5cf6"/>
+                </linearGradient></defs>
+                <circle cx="35" cy="35" r="27" fill="none" stroke="#e2e8f8" stroke-width="7"/>
+                <circle id="ringArc" cx="35" cy="35" r="27" fill="none" stroke="url(#rg)" stroke-width="7" stroke-linecap="round"
+                  stroke-dasharray="170" stroke-dashoffset="170" transform="rotate(-90 35 35)"/>
+              </svg>
+              <div class="ring-txt"><div id="ringPct">0%</div><div class="ring-sub">dolu</div></div>
+            </div>
+            <div id="statsGrid" class="stats-list"></div>
+          </div></div>
+          <!-- Badges -->
+          <div class="card"><div class="card-h">🏆 Rozetler</div><div class="card-b">
+            <div class="badge-row">
+              <div class="badge" id="bdg-plan">📅 Planlayıcı</div>
+              <div class="badge" id="bdg-stud">📚 Çalışkan</div>
+              <div class="badge" id="bdg-athl">⚽ Sporcu</div>
+              <div class="badge" id="bdg-bal">⚖️ Dengeli</div>
+              <div class="badge" id="bdg-earl">🌅 Erken Kuş</div>
+            </div>
+          </div></div>
+          <div class="quote-card"><div id="qText" class="qt"></div><div id="qAuth" class="qa"></div></div>
+        </aside>
+        <div class="sched-main">
+          <div class="motiv-bar"><span id="motivIcon">🌟</span><div><strong id="motivT">Harika bir gün!</strong><div id="motivS">Programını doldurmaya başla 🎯</div></div></div>
+          <div id="weekNav" class="week-nav"></div>
+          <div class="card">
+            <div class="card-h" style="justify-content:space-between">
+              <span id="schedTitle">📅 Pazartesi</span>
+              <div style="display:flex;gap:8px">
+                <span class="sched-tip">✏️ Tıkla → Ata</span>
+                <button class="btn-sm" onclick="clearDay()">🗑️ Temizle</button>
+              </div>
+            </div>
+            <div class="card-b" id="schedBody"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUBJECTS -->
+    <div id="tab-subjects" class="tab-panel">
+      <div class="tab-inner">
+        <div class="sec-head"><h2>📚 Derslerim</h2><button class="btn-add" onclick="openSubjModal()">➕ Ders Ekle</button></div>
+        <div id="subjList" class="subj-list"></div>
+      </div>
+    </div>
+
+    <!-- HOMEWORK -->
+    <div id="tab-homework" class="tab-panel">
+      <div class="tab-inner">
+        <div class="sec-head"><h2>📝 Ödevlerim</h2><button class="btn-add" onclick="openHwModal()">➕ Ödev Ekle</button></div>
+        <div id="hwFilters" class="filter-bar"></div>
+        <div id="hwList" class="item-list"></div>
+      </div>
+    </div>
+
+    <!-- EXAMS -->
+    <div id="tab-exams" class="tab-panel">
+      <div class="tab-inner">
+        <div class="sec-head"><h2>📊 Sınav Sonuçları</h2><button class="btn-add" onclick="openExamModal()">➕ Sınav Ekle</button></div>
+        <div id="examFilters" class="filter-bar"></div>
+        <div id="examAvgs" class="exam-avgs"></div>
+        <div id="examList" class="item-list"></div>
+      </div>
+    </div>
+
+    <!-- NOTES -->
+    <div id="tab-notes" class="tab-panel">
+      <div class="tab-inner">
+        <div class="sec-head"><h2>🗒️ Notlarım</h2><button class="btn-add" onclick="openNoteModal()">➕ Not Ekle</button></div>
+        <div id="notesList"></div>
+      </div>
+    </div>
+
+    <!-- PRACTICE -->
+    <div id="tab-practice" class="tab-panel">
+      <div class="tab-inner">
+        <div class="sec-head"><h2>🔢 Çalışmalarım</h2><button class="btn-add" onclick="openPrModal()">➕ Çalışma Ekle</button></div>
+        <div id="prFilters" class="filter-bar"></div>
+        <div id="prOverview" class="exam-avgs"></div>
+        <div id="prList" class="item-list"></div>
+      </div>
+    </div>
+
+  </div><!-- tab-area -->
+
+  <nav class="bot-nav">
+    <button class="ni active" data-tab="schedule" onclick="switchTab('schedule',this)"><span>📅</span><b>Programım</b></button>
+    <button class="ni" data-tab="subjects" onclick="switchTab('subjects',this)"><span>📚</span><b>Dersler</b></button>
+    <button class="ni" data-tab="homework" onclick="switchTab('homework',this)"><span>📝</span><b>Ödevler</b><em id="hwBadge" class="n-badge"></em></button>
+    <button class="ni" data-tab="exams" onclick="switchTab('exams',this)"><span>📊</span><b>Sınavlar</b></button>
+    <button class="ni" data-tab="notes" onclick="switchTab('notes',this)"><span>🗒️</span><b>Notlarım</b></button>
+    <button class="ni" data-tab="practice" onclick="switchTab('practice',this)"><span>🔢</span><b>Çalışma</b></button>
+  </nav>
+  <!-- PROFILE PANEL -->
+  <div id="profileOverlay" class="profile-overlay" onclick="closeProfile()"></div>
+  <div id="profilePanel" class="profile-panel">
+    <div class="pp-hdr">
+      <div class="pp-hdr-left">
+        <span id="ppAvatar" class="pp-av-big"></span>
+        <div><div id="ppName" class="pp-nm"></div><div id="ppGrade" class="pp-gr"></div></div>
+      </div>
+      <button class="pp-close" onclick="closeProfile()">✕</button>
+    </div>
+    <div class="pp-body">
+      <div class="pp-sec"><div class="pp-sec-h">📅 Bugünün Özeti</div><div id="ppSummary"></div></div>
+      <div class="pp-sec"><div class="pp-sec-h">💡 Asistan Önerileri</div><div id="ppRecs"></div></div>
+      <div class="pp-sec"><div class="pp-sec-h">🔐 Şifre Ayarları</div><div id="ppPwSection"></div></div>
+    </div>
+  </div>
+
+</div><!-- scr-app -->
+
+<!-- MODAL -->
+<div id="overlay" class="overlay" onclick="handleOvClick(event)">
+  <div class="modal"><div class="modal-head"><span id="modalTitle" class="modal-ttl"></span><button class="modal-x" onclick="closeModal()">✕</button></div><div id="modalBody"></div></div>
+</div>
+
+<!-- TOAST -->
+<div id="toastWrap" class="toast-wrap"></div>
+
+<script src="db.js"></script>
+<script src="app.js"></script>
+<script src="schedule.js"></script>
+<script src="subjects.js"></script>
+<script src="homework.js"></script>
+<script src="exams.js"></script>
+<script src="notes.js"></script>
+<script src="practice.js"></script>
+<script src="ai-bot.js"></script>
+
+<!-- Service Worker kaydı (PWA) -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .catch(() => {}); // Sessizce başarısız ol (local file'da normal)
+  });
+}
+</script>
+</body>
+</html>
