@@ -1419,9 +1419,9 @@ const ParentDailyReporter = {
           <p style="font-size:.75rem;color:#1e3a8a;margin-top:4px;">
             Öğrencilerinizin bugünkü tüm ders, ödev, soru çözümü ve koçluk değerlendirmeleri hazırlandı.
           </p>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
-            <label class="fl" style="margin:0;white-space:nowrap;">Veli E-Posta:</label>
-            <input type="email" id="parentDailyEmailInput" class="field" style="padding:5px 8px;font-size:.78rem;" value="${escH(parentEmail)}" onchange="ParentDailyReporter.setParentEmail(this.value)"/>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;background:#ffffff;padding:8px 12px;border-radius:10px;border:1.5px solid #93c5fd;">
+            <label style="margin:0;white-space:nowrap;font-weight:900;color:#1e40af;font-size:.78rem;">📧 Veli E-Posta:</label>
+            <input type="email" id="parentDailyEmailInput" class="field" style="margin:0;padding:6px 10px;font-size:.84rem;background:#f8faff;color:#0f172a;border:1.5px solid #3b82f6;border-radius:8px;font-weight:800;" value="${escH(parentEmail)}" onchange="ParentDailyReporter.setParentEmail(this.value)" placeholder="ornek@gmail.com"/>
           </div>
         </div>
 

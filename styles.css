@@ -440,6 +440,58 @@ select.field option{background:#1e3a8a;color:#fff}
 .mfg input,.mfg select,.mfg textarea{width:100%;padding:9px 12px;border:1.5px solid var(--bdr);border-radius:var(--rs);font-family:'Nunito',sans-serif;font-size:.87rem;font-weight:600;color:var(--txt);background:#f8faff;outline:none;transition:border-color var(--t)}
 .mfg input:focus,.mfg select:focus,.mfg textarea:focus{border-color:var(--blue);background:#fff}
 .mfg textarea{resize:vertical;min-height:90px}
+
+/* Universal high-contrast readability for modal / panel / card fields and labels */
+.modal .fl,
+.ai-card .fl,
+.card .fl,
+.profile-panel .fl,
+#scr-app .fl {
+  color: #334155 !important;
+  font-size: 0.72rem !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.4px !important;
+}
+
+.modal .field,
+.ai-card .field,
+.card .field,
+.profile-panel .field,
+#scr-app .field {
+  color: #0f172a !important;
+  background: #ffffff !important;
+  border: 1.5px solid #94a3b8 !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+}
+
+.modal .field::placeholder,
+.ai-card .field::placeholder,
+.card .field::placeholder,
+.profile-panel .field::placeholder,
+#scr-app .field::placeholder {
+  color: #94a3b8 !important;
+  font-weight: 600 !important;
+}
+
+.modal .field:focus,
+.ai-card .field:focus,
+.card .field:focus,
+.profile-panel .field:focus,
+#scr-app .field:focus {
+  border-color: #2563eb !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18) !important;
+}
+
+.modal select.field option,
+.ai-card select.field option,
+#scr-app select.field option {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
 .m2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
 .mfoot{display:flex;gap:9px;margin-top:16px}
 .btn-save{flex:1;padding:10px;background:linear-gradient(135deg,#1e3a8a,#3b82f6);color:#fff;border:none;border-radius:var(--rs);font-family:'Nunito',sans-serif;font-weight:800;font-size:.87rem;cursor:pointer;transition:var(--t)}

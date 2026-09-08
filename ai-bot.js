@@ -1196,31 +1196,35 @@ const SchoolAIBot = {
     openSettingsModal() {
         const parentEmail = (typeof ParentDailyReporter !== 'undefined') ? ParentDailyReporter.getParentEmail() : 'veli@ornek.com';
         const html = `
-            <div style="font-size:.8rem;display:flex;flex-direction:column;gap:10px;">
-                <label class="fl">📧 Veli E-Posta Bildirim Ayarı (Saat 20:30)</label>
-                <div style="display:flex;flex-direction:column;gap:4px;">
-                    <input type="email" id="aiModalParentEmail" class="field" value="${escH(parentEmail)}" placeholder="veli@gmail.com"/>
-                    <div style="font-size:.72rem;color:var(--muted);">
+            <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;">
+                <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;">
+                    <label style="font-size:.78rem;font-weight:900;color:#1e40af;text-transform:uppercase;letter-spacing:.3px;">📧 Veli E-Posta Bildirim Ayarı (Saat 20:30)</label>
+                    <input type="email" id="aiModalParentEmail" class="field" style="background:#ffffff;color:#0f172a;border:1.5px solid #3b82f6;font-weight:800;padding:8px 12px;font-size:.84rem;" value="${escH(parentEmail)}" placeholder="veli@gmail.com"/>
+                    <div style="font-size:.72rem;color:#1e3a8a;font-weight:600;">
                         Her gün saat 20:30'da tüm öğrencilerin günlük özeti bu e-posta adresine otomatik hazırlanır.
                     </div>
                 </div>
 
-                <div style="border-top:1px solid var(--bdr);padding-top:10px;margin-top:4px;">
-                    <label class="fl">Yerel LLM Yapay Zeka Bağlantısı</label>
+                <div style="background:#f8faff;border:1.5px solid #e2e8f0;border-radius:12px;padding:12px;">
+                    <label style="font-size:.78rem;font-weight:900;color:#334155;text-transform:uppercase;margin-bottom:8px;display:block;">Yerel LLM Yapay Zeka Bağlantısı</label>
                     <div style="display:flex;align-items:center;gap:8px;">
-                        <input type="checkbox" id="aiLlmToggle" ${this.llmConfig.enabled ? 'checked' : ''} style="width:18px;height:18px;"/>
-                        <label for="aiLlmToggle" style="font-weight:700;cursor:pointer;">Ollama / LM Studio API Kullan</label>
+                        <input type="checkbox" id="aiLlmToggle" ${this.llmConfig.enabled ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer;"/>
+                        <label for="aiLlmToggle" style="font-weight:800;color:#1e293b;cursor:pointer;">Ollama / LM Studio API Kullan</label>
                     </div>
-                    <div id="aiLlmFields" style="${this.llmConfig.enabled ? '' : 'display:none;'}display:flex;flex-direction:column;gap:8px;margin-top:8px;">
-                        <label class="fl">Endpoint URL</label>
-                        <input type="text" id="aiLlmEndpoint" class="field" value="${this.llmConfig.endpoint}"/>
-                        <label class="fl">Model Adı</label>
-                        <input type="text" id="aiLlmModel" class="field" value="${this.llmConfig.model}"/>
+                    <div id="aiLlmFields" style="${this.llmConfig.enabled ? '' : 'display:none;'}display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+                        <div>
+                            <label style="display:block;font-size:.72rem;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:3px;">Endpoint URL</label>
+                            <input type="text" id="aiLlmEndpoint" class="field" style="background:#ffffff;color:#0f172a;border:1.5px solid #cbd5e1;font-weight:700;" value="${this.llmConfig.endpoint}"/>
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:.72rem;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:3px;">Model Adı</label>
+                            <input type="text" id="aiLlmModel" class="field" style="background:#ffffff;color:#0f172a;border:1.5px solid #cbd5e1;font-weight:700;" value="${this.llmConfig.model}"/>
+                        </div>
                     </div>
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
-                    <button class="btn-login" style="margin-top:0;" onclick="SchoolAIBot.saveSettingsFromModal()">💾 Ayarları Kaydet</button>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
+                    <button class="btn-login" style="margin-top:0;background:#10b981;color:#fff;" onclick="SchoolAIBot.saveSettingsFromModal()">💾 Ayarları Kaydet</button>
                     <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;" onclick="ParentDailyReporter.sendDailyReport('manual')">📧 20:30 Raporunu Test Et</button>
                 </div>
             </div>
