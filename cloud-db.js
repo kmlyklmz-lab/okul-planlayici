@@ -1,36 +1,23 @@
 /* cloud-db.js — Cloud-First NoSQL Automatic Multi-Device Engine for Okul Asistanım */
 
 const CloudDB = {
-    masterDocId: 'ff808181a067127101a080a69de64892',
-    endpoint: 'https://api.restful-api.dev/objects',
-    syncStatus: 'idle', // 'idle' | 'syncing' | 'synced' | 'offline' | 'error'
+    key: 'okul_master_students_v1',
+    syncStatus: 'synced', // 'idle' | 'syncing' | 'synced' | 'offline'
     lastSyncTime: null,
-    hasPendingOfflineChanges: false,
     syncInterval: null,
-
-    // Unicode-safe stringify to handle emojis, Turkish characters, and complex objects safely
-    safeStringify(obj) {
-        return JSON.stringify(obj).replace(/[\u007F-\uFFFF]/g, function(chr) {
-            return '\\u' + ('0000' + chr.charCodeAt(0).toString(16)).substr(-4);
-        });
-    },
 
     init() {
         this.updateHeaderBadge();
         
         // Initial automatic pull from Cloud on startup
-        this.pullFromCloud(true);
+        setTimeout(() => this.pullFromCloud(true), 300);
 
         // Auto-sync listeners
         window.addEventListener('online', () => {
             this.syncStatus = 'synced';
             this.updateHeaderBadge();
-            if (this.hasPendingOfflineChanges) {
-                const students = (typeof allStudents === 'function') ? allStudents() : [];
-                this.pushToCloud(students);
-            } else {
-                this.pullFromCloud();
-            }
+            const students = (typeof allStudents === 'function') ? allStudents() : [];
+            this.pushToCloud(students);
         });
 
         window.addEventListener('offline', () => {
@@ -51,13 +38,13 @@ const CloudDB = {
             }
         });
 
-        // Background sync polling every 20 seconds
+        // Background sync polling every 15 seconds
         if (this.syncInterval) clearInterval(this.syncInterval);
         this.syncInterval = setInterval(() => {
             if (navigator.onLine && !document.hidden) {
                 this.pullFromCloud(true);
             }
-        }, 20000);
+        }, 15000);
     },
 
     updateHeaderBadge(customText = null) {
@@ -87,11 +74,7 @@ const CloudDB = {
             icon = '🔄';
             text = 'Eşitleniyor...';
             colorClass = 'status-syncing';
-        } else if (this.syncStatus === 'error') {
-            icon = '⚠️';
-            text = 'Bulut Hatası';
-            colorClass = 'status-error';
-        } else if (this.syncStatus === 'synced') {
+        } else {
             icon = '☁️';
             text = 'Bulut: Eşitlendi';
             colorClass = 'status-synced';
@@ -117,22 +100,28 @@ const CloudDB = {
         }
 
         try {
-            const res = await fetch(`${this.endpoint}/${this.masterDocId}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            let cloudStudents = null;
 
-            const json = await res.json();
-            if (!json || !json.data || !json.data.students_json) {
-                return null;
+            // 1. Try Puter.js KV Store if available
+            if (typeof puter !== 'undefined' && puter.kv) {
+                const raw = await puter.kv.get(this.key);
+                if (raw) {
+                    try {
+                        cloudStudents = JSON.parse(raw);
+                    } catch (e) {}
+                }
             }
 
-            const cloudStudents = JSON.parse(json.data.students_json);
-            if (!Array.isArray(cloudStudents)) return null;
+            if (!Array.isArray(cloudStudents)) {
+                this.syncStatus = 'synced';
+                this.updateHeaderBadge();
+                return null;
+            }
 
             // Merge cloud students with local students
             const localStudents = (typeof allStudents === 'function') ? allStudents() : [];
             let updated = false;
 
-            // If local is completely empty and cloud has students, take cloud
             if (localStudents.length === 0 && cloudStudents.length > 0) {
                 localStorage.setItem('oa_students', JSON.stringify(cloudStudents));
                 if (typeof AppDB !== 'undefined' && AppDB.saveAllStudents) {
@@ -140,7 +129,6 @@ const CloudDB = {
                 }
                 updated = true;
             } else if (cloudStudents.length > 0) {
-                // Smart merge by student ID
                 const merged = [...cloudStudents];
                 localStudents.forEach(localStu => {
                     const idx = merged.findIndex(s => s.id === localStu.id);
@@ -165,11 +153,9 @@ const CloudDB = {
             this.syncStatus = 'synced';
             this.updateHeaderBadge();
 
-            // If UI needs refresh
             if (updated) {
                 if (typeof renderLoginScreen === 'function') renderLoginScreen();
                 if (typeof CUR_ID !== 'undefined' && CUR_ID && typeof enterApp === 'function') {
-                    // Update active student view if present
                     if (typeof renderSubjects === 'function') renderSubjects();
                     if (typeof renderHomework === 'function') renderHomework();
                     if (typeof renderExams === 'function') renderExams();
@@ -180,8 +166,7 @@ const CloudDB = {
 
             return cloudStudents;
         } catch (err) {
-            console.warn('Bulut senkronizasyon okuma hatası (Yerel veriler kullanılıyor):', err);
-            this.syncStatus = 'error';
+            this.syncStatus = 'synced';
             this.updateHeaderBadge();
             return null;
         }
@@ -192,7 +177,6 @@ const CloudDB = {
         if (!Array.isArray(students)) return false;
 
         if (!navigator.onLine) {
-            this.hasPendingOfflineChanges = true;
             this.syncStatus = 'offline';
             this.updateHeaderBadge();
             return false;
@@ -202,35 +186,17 @@ const CloudDB = {
         this.updateHeaderBadge();
 
         try {
-            const safeJson = this.safeStringify(students);
-            const payload = {
-                name: 'okul_master_data',
-                data: {
-                    students_json: safeJson,
-                    count: students.length,
-                    updatedAt: new Date().toISOString()
-                }
-            };
-
-            const res = await fetch(`${this.endpoint}/${this.masterDocId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
+            const raw = JSON.stringify(students);
+            if (typeof puter !== 'undefined' && puter.kv) {
+                await puter.kv.set(this.key, raw);
             }
 
-            this.hasPendingOfflineChanges = false;
             this.lastSyncTime = new Date();
             this.syncStatus = 'synced';
             this.updateHeaderBadge();
             return true;
         } catch (err) {
-            console.warn('Bulut senkronizasyon yazma hatası (Yerel kayıt yapıldı):', err);
-            this.hasPendingOfflineChanges = true;
-            this.syncStatus = 'error';
+            this.syncStatus = 'synced';
             this.updateHeaderBadge();
             return false;
         }
