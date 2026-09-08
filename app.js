@@ -1279,6 +1279,25 @@ const ParentDailyReporter = {
     }
   },
 
+  getEmailConfig() {
+    let cfg = {
+      serviceId: '',
+      templateId: '',
+      publicKey: '',
+      webhookUrl: '',
+      autoSend: true
+    };
+    try {
+      const saved = localStorage.getItem('oa_email_config');
+      if (saved) cfg = Object.assign(cfg, JSON.parse(saved));
+    } catch (e) {}
+    return cfg;
+  },
+
+  saveEmailConfig(cfg) {
+    localStorage.setItem('oa_email_config', JSON.stringify(cfg));
+  },
+
   checkSchedule() {
     const now = new Date();
     const curHour = now.getHours();
@@ -1291,8 +1310,127 @@ const ParentDailyReporter = {
       if (lastSent !== todayKey) {
         localStorage.setItem('oa_last_parent_report_date', todayKey);
         this.sendDailyReport('auto');
+        const cfg = this.getEmailConfig();
+        if (cfg.autoSend && (cfg.serviceId || cfg.webhookUrl)) {
+          this.sendDirectHtmlEmail(true);
+        }
       }
     }
+  },
+
+  generateStandaloneEmailHtml(students, dateStr, todayName) {
+    const now = new Date();
+    let studentBlocks = '';
+
+    if (!students.length) {
+      studentBlocks = '<tr><td style="padding:15px;text-align:center;color:#64748b;">Kayıtlı öğrenci verisi bulunamadı.</td></tr>';
+    } else {
+      students.forEach((s, idx) => {
+        const sch = (s.weeklySchedules && s.weeklySchedules[getWeekKey(getMonday(now))]) || s.schedule || {};
+        const todaySch = sch[now.getDay()] || {};
+        const hw = s.homework || [];
+        const pendingHw = hw.filter(h => !h.completed && !h.done);
+        const doneHw = hw.filter(h => h.completed || h.done);
+        const exams = s.exams || [];
+        const upcomingExams = exams.filter(e => e.date && new Date(e.date) >= new Date(now.toDateString()));
+        const practice = s.practice || [];
+        const todayDateStr = now.toISOString().slice(0, 10);
+        const todayPr = practice.filter(p => p.date === todayDateStr || p.createdAt === todayDateStr);
+        const totalQToday = todayPr.reduce((sum, p) => sum + (Number(p.total) || 0), 0);
+        const correctToday = todayPr.reduce((sum, p) => sum + (Number(p.correct) || 0), 0);
+        const activeHours = Object.keys(todaySch).filter(h => todaySch[h] && (todaySch[h].cat || todaySch[h].actId));
+
+        studentBlocks += `
+          <tr>
+            <td style="padding:12px 0;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8faff;border:1.5px solid #cbd5e1;border-radius:12px;overflow:hidden;">
+                <tr>
+                  <td style="background:#eff6ff;padding:12px 16px;border-bottom:1.5px solid #bfdbfe;">
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="font-size:18px;font-weight:900;color:#1e40af;">
+                          ${s.avatar} ${escH(s.name)} <span style="font-size:13px;color:#64748b;font-weight:700;">(${s.grade}. Sınıf)</span>
+                        </td>
+                        <td align="right">
+                          <span style="background:#2563eb;color:#ffffff;font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px;">
+                            ${activeHours.length} Saat Program
+                          </span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 16px;">
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td width="50%" valign="top" style="padding-right:8px;">
+                          <div style="font-size:12px;font-weight:800;color:#334155;margin-bottom:4px;">📝 ÖDEV DURUMU:</div>
+                          <div style="font-size:13px;color:#166534;font-weight:700;">✅ ${doneHw.length} Tamamlandı</div>
+                          <div style="font-size:13px;color:#dc2626;font-weight:700;margin-top:2px;">⏳ ${pendingHw.length} Bekleyen</div>
+                          ${pendingHw.length ? `<div style="font-size:11px;color:#475569;margin-top:4px;">${pendingHw.slice(0, 3).map(h => '• ' + escH(h.title)).join('<br/>')}</div>` : ''}
+                        </td>
+                        <td width="50%" valign="top" style="padding-left:8px;">
+                          <div style="font-size:12px;font-weight:800;color:#334155;margin-bottom:4px;">🔢 SORU & SINAV:</div>
+                          <div style="font-size:13px;color:#1e293b;font-weight:700;">
+                            ${totalQToday > 0 ? `🎯 ${totalQToday} Soru (${correctToday} Doğru)` : 'Bugün test girişi yok'}
+                          </div>
+                          <div style="font-size:12px;color:#0284c7;font-weight:700;margin-top:3px;">
+                            ${upcomingExams.length ? `📊 ${upcomingExams.length} Yaklaşan Sınav` : '✨ Yakın sınav yok'}
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                    <div style="margin-top:12px;background:#ede9fe;border:1px solid #ddd6fe;color:#5b21b6;padding:9px 12px;border-radius:8px;font-size:12px;font-weight:700;line-height:1.4;">
+                      🤖 <strong>Yapay Zeka Koçu Değerlendirmesi:</strong> ${pendingHw.length === 0 ? 'Harika bir çalışma günüydü! Tüm hedefler başarıyla tamamlandı.' : 'Kalan ödevlerin yarına hazır olması için kısa bir çalışma oturumu önerilir.'}
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Okul Asistanım - Günlük Veli Özeti</title>
+      </head>
+      <body style="margin:0;padding:20px 10px;background-color:#f0f4ff;font-family:'Segoe UI',Roboto,-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:18px;overflow:hidden;border:1.5px solid #cbd5e1;box-shadow:0 6px 24px rgba(0,0,0,0.07);">
+          <tr>
+            <td style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 60%,#3b82f6 100%);padding:24px 20px;text-align:center;color:#ffffff;">
+              <div style="font-size:32px;margin-bottom:4px;">🎒</div>
+              <h1 style="margin:0 0 4px 0;font-size:22px;font-weight:900;letter-spacing:-0.5px;">Okul Asistanım</h1>
+              <div style="font-size:14px;font-weight:700;opacity:0.95;">📅 ${dateStr} ${todayName} — Saat 20:30 Günlük Veli Bülteni</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 18px;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                ${studentBlocks}
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f8faff;padding:18px;text-align:center;border-top:1.5px solid #e2e8f0;font-size:12px;color:#64748b;line-height:1.5;">
+              <div>📡 <strong>Google Firebase NoSQL Bulut Senkronizasyonu</strong></div>
+              <div style="margin-top:8px;">
+                <a href="https://kmlyklmz-lab.github.io/okul-planlayici/" style="display:inline-block;padding:8px 18px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:25px;font-weight:800;font-size:12px;">
+                  🌐 Canlı Veli Takip Paneline Git →
+                </a>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
   },
 
   generateAllStudentsReport() {
@@ -1317,7 +1455,7 @@ const ParentDailyReporter = {
     if (!students.length) {
       textReport += `Kayıtlı öğrenci bulunamadı.\n`;
       htmlReport += `<p>Kayıtlı öğrenci bulunamadı.</p></div>`;
-      return { text: textReport, html: htmlReport, studentsCount: 0 };
+      return { text: textReport, html: htmlReport, studentsCount: 0, rawHtml: '' };
     }
 
     students.forEach((s, idx) => {
@@ -1333,8 +1471,6 @@ const ParentDailyReporter = {
       const todayPr = practice.filter(p => p.date === todayDateStr || p.createdAt === todayDateStr);
       const totalQToday = todayPr.reduce((sum, p) => sum + (Number(p.total) || 0), 0);
       const correctToday = todayPr.reduce((sum, p) => sum + (Number(p.correct) || 0), 0);
-
-      // Schedule hours count
       const activeHours = Object.keys(todaySch).filter(h => todaySch[h] && (todaySch[h].cat || todaySch[h].actId));
 
       textReport += `👤 ÖĞRENCİ ${idx + 1}: ${s.name} (${s.grade}. Sınıf)\n`;
@@ -1394,7 +1530,186 @@ const ParentDailyReporter = {
       </div>
     `;
 
-    return { text: textReport, html: htmlReport, studentsCount: students.length };
+    const rawHtml = this.generateStandaloneEmailHtml(students, dateStr, todayName);
+
+    return { text: textReport, html: htmlReport, rawHtml, studentsCount: students.length };
+  },
+
+  async sendDirectHtmlEmail(isAuto = false) {
+    const parentEmail = this.getParentEmail();
+    const students = allStudents();
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('tr-TR');
+    const subject = `🎒 Okul Asistanım - 20:30 Günlük Veli Bülteni (${dateStr})`;
+    const report = this.generateAllStudentsReport();
+    const cfg = this.getEmailConfig();
+
+    if (!parentEmail || parentEmail.indexOf('@') === -1) {
+      showToast('⚠️ Lütfen geçerli bir veli e-posta adresi girin!', '#f59e0b');
+      return false;
+    }
+
+    // 1. If custom Webhook URL configured
+    if (cfg.webhookUrl) {
+      try {
+        const res = await fetch(cfg.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: parentEmail,
+            subject,
+            html: report.rawHtml,
+            text: report.text,
+            studentsCount: report.studentsCount,
+            sentAt: new Date().toISOString()
+          })
+        });
+        if (res.ok) {
+          showToast(`🚀 20:30 HTML Veli Raporu ${parentEmail} adresine postalandı!`, '#10b981');
+          if (typeof AppDB !== 'undefined') AppDB.logActivity('VELI_RAPOR_GONDERIM', `HTML E-Posta Webhook ile iletildi: ${parentEmail}`, `${report.studentsCount} Öğrenci`);
+          return true;
+        }
+      } catch (err) {
+        console.warn('Webhook email failed:', err);
+      }
+    }
+
+    // 2. If EmailJS configured
+    if (cfg.serviceId && cfg.templateId && cfg.publicKey) {
+      try {
+        const payload = {
+          service_id: cfg.serviceId,
+          template_id: cfg.templateId,
+          user_id: cfg.publicKey,
+          template_params: {
+            to_email: parentEmail,
+            email_to: parentEmail,
+            recipient: parentEmail,
+            subject: subject,
+            message_html: report.rawHtml,
+            message_text: report.text,
+            date_str: dateStr,
+            students_count: String(report.studentsCount)
+          }
+        };
+        const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          showToast(`🚀 20:30 HTML Veli Raporu ${parentEmail} adresine başarıyla gönderildi!`, '#10b981');
+          if (typeof AppDB !== 'undefined') AppDB.logActivity('VELI_RAPOR_GONDERIM', `HTML E-Posta EmailJS ile gönderildi: ${parentEmail}`, `${report.studentsCount} Öğrenci`);
+          return true;
+        } else {
+          const errTxt = await res.text();
+          console.warn('EmailJS error:', errTxt);
+          showToast('⚠️ EmailJS ile gönderim başarısız oldu. Ayarları kontrol edin.', '#ef4444');
+        }
+      } catch (e) {
+        console.warn('EmailJS fetch error:', e);
+        showToast('⚠️ E-posta servisine bağlanırken hata oluştu.', '#ef4444');
+      }
+    }
+
+    // Fallback: If not configured, prompt configuration modal or mailto
+    if (!isAuto) {
+      this.openEmailSettingsModal();
+    }
+    return false;
+  },
+
+  openEmailSettingsModal() {
+    const cfg = this.getEmailConfig();
+    const parentEmail = this.getParentEmail();
+
+    const html = `
+      <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;">
+        <div class="ai-card" style="background:#eff6ff;border-color:#bfdbfe;">
+          <h4 style="color:#1e40af;margin:0 0 4px 0;">⚡ Otomatik HTML E-Posta Gönderim Kurulumu</h4>
+          <p style="font-size:.76rem;color:#1e3a8a;margin:0;line-height:1.45;">
+            Velinin hiçbir düğmeye basmasına gerek kalmadan, her gün <strong>saat 20:30'da</strong> renkli ve görselli HTML bültenin otomatik olarak velinin gelen kutusuna (Gmail vb.) düşmesi için EmailJS (ücretsiz 200 mail/ay) anahtarlarınızı buraya girebilirsiniz.
+          </p>
+        </div>
+
+        <div class="mfg">
+          <label>Veli E-Posta Adresi</label>
+          <input type="email" id="cfgParentEmail" class="field" value="${escH(parentEmail)}" placeholder="veli@gmail.com"/>
+        </div>
+
+        <div style="background:#f8faff;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+          <div style="font-weight:900;color:#1e293b;font-size:.78rem;display:flex;align-items:center;justify-content:space-between;">
+            <span>🔑 EmailJS API Bilgileri (Ücretsiz)</span>
+            <a href="https://www.emailjs.com/" target="_blank" style="color:#2563eb;text-decoration:none;font-size:.72rem;">EmailJS.com'a Git ↗</a>
+          </div>
+
+          <div class="mfg" style="margin-bottom:4px;">
+            <label>Service ID</label>
+            <input type="text" id="cfgEmailServiceId" class="field" value="${escH(cfg.serviceId)}" placeholder="ör: service_okul"/>
+          </div>
+
+          <div class="mfg" style="margin-bottom:4px;">
+            <label>Template ID</label>
+            <input type="text" id="cfgEmailTemplateId" class="field" value="${escH(cfg.templateId)}" placeholder="ör: template_veli_ozet"/>
+          </div>
+
+          <div class="mfg" style="margin-bottom:4px;">
+            <label>Public Key (User ID)</label>
+            <input type="text" id="cfgEmailPublicKey" class="field" value="${escH(cfg.publicKey)}" placeholder="ör: user_xxxxx veya pk_xxxxx"/>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;background:#fff;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;">
+          <input type="checkbox" id="cfgEmailAutoSend" ${cfg.autoSend ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer;"/>
+          <label for="cfgEmailAutoSend" style="font-weight:800;color:#1e293b;cursor:pointer;font-size:.78rem;">
+            ⏰ Saat 20:30'da arka planda otomatik HTML mail gönder
+          </label>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
+          <button class="btn-login" style="margin-top:0;background:#10b981;color:#fff;" onclick="ParentDailyReporter.saveSettingsFromModal()">
+            💾 Ayarları Kaydet
+          </button>
+          <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;" onclick="ParentDailyReporter.testSendFromModal()">
+            🚀 Şimdi Test Maili Gönder
+          </button>
+        </div>
+      </div>
+    `;
+
+    openModal('⚙️ Otomatik 20:30 HTML E-Posta Servisi', html);
+  },
+
+  saveSettingsFromModal() {
+    const email = document.getElementById('cfgParentEmail')?.value.trim();
+    const serviceId = document.getElementById('cfgEmailServiceId')?.value.trim() || '';
+    const templateId = document.getElementById('cfgEmailTemplateId')?.value.trim() || '';
+    const publicKey = document.getElementById('cfgEmailPublicKey')?.value.trim() || '';
+    const autoSend = document.getElementById('cfgEmailAutoSend')?.checked ?? true;
+
+    if (email) this.setParentEmail(email);
+    this.saveEmailConfig({ serviceId, templateId, publicKey, autoSend });
+    showToast('💾 E-posta servisi ayarları kaydedildi!', '#10b981');
+    closeModal();
+  },
+
+  async testSendFromModal() {
+    const email = document.getElementById('cfgParentEmail')?.value.trim();
+    const serviceId = document.getElementById('cfgEmailServiceId')?.value.trim() || '';
+    const templateId = document.getElementById('cfgEmailTemplateId')?.value.trim() || '';
+    const publicKey = document.getElementById('cfgEmailPublicKey')?.value.trim() || '';
+    const autoSend = document.getElementById('cfgEmailAutoSend')?.checked ?? true;
+
+    if (email) this.setParentEmail(email);
+    this.saveEmailConfig({ serviceId, templateId, publicKey, autoSend });
+
+    if (!serviceId || !templateId || !publicKey) {
+      showToast('⚠️ Lütfen EmailJS Service ID, Template ID ve Public Key bilgilerini girin!', '#f59e0b');
+      return;
+    }
+
+    showToast('⏳ Test e-postası gönderiliyor...', '#3b82f6');
+    await this.sendDirectHtmlEmail(false);
   },
 
   sendDailyReport(mode = 'manual', studentId = null) {
@@ -1425,16 +1740,25 @@ const ParentDailyReporter = {
           </div>
         </div>
 
-        <div style="max-height:240px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:10px;padding:8px;background:#fff;">
+        <div style="max-height:220px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:10px;padding:8px;background:#fff;">
           ${report.html}
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;font-size:.78rem;" onclick="ParentDailyReporter.sendDirectHtmlEmail()">
+            🚀 HTML Mail Gönder (EmailJS)
+          </button>
           <a href="${mailtoUrl}" target="_blank" class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;font-size:.78rem;">
-            📧 E-Posta Gönder (Mailto)
+            📧 E-Posta İstemcisi (Mailto)
           </a>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:-4px;">
           <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#059669,#10b981);color:#fff;padding:9px;font-size:.78rem;" onclick="navigator.clipboard.writeText(\`${report.text.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`);showToast('📋 Rapor panoya kopyalandı!','success');">
-            📋 Raporu Kopyala / WhatsApp
+            📋 WhatsApp / Panoya Kopyala
+          </button>
+          <button class="btn-login" style="margin-top:0;background:#f1f5f9;color:#334155;border:1.5px solid #cbd5e1;padding:9px;font-size:.78rem;" onclick="ParentDailyReporter.openEmailSettingsModal()">
+            ⚙️ Otomatik E-Posta Ayarları
           </button>
         </div>
       </div>
