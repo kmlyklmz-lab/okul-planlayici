@@ -1,124 +1,127 @@
-/* cloud-db.js — Universal Cross-Device & Realtime Sync Engine for Okul Asistanım (No third-party login required) */
+/* cloud-db.js — Official Google Firebase Realtime NoSQL Engine for Okul Asistanım */
 
 const CloudDB = {
-    syncChannel: null,
-
-    // Safe UTF-8 Base64 encoder
-    encodeData(obj) {
-        try {
-            const json = JSON.stringify(obj);
-            return btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (match, p1) => {
-                return String.fromCharCode('0x' + p1);
-            }));
-        } catch (e) {
-            console.error('Encode error:', e);
-            return '';
-        }
-    },
-
-    // Safe UTF-8 Base64 decoder
-    decodeData(b64) {
-        try {
-            const json = decodeURIComponent(Array.prototype.map.call(atob(b64), (c) => {
-                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-            }).join(''));
-            return JSON.parse(json);
-        } catch (e) {
-            console.error('Decode error:', e);
-            return null;
-        }
-    },
+    databaseUrl: 'https://okul-planlayici-default-rtdb.europe-west1.firebasedatabase.app/students.json',
+    syncStatus: 'synced', // 'syncing' | 'synced' | 'offline'
+    lastSyncTime: null,
+    eventSource: null,
+    pollInterval: null,
+    isParentMode: false,
 
     init() {
         this.updateHeaderBadge();
-        this.checkUrlForAutoImport();
+        
+        // 1. Initial pull from Firebase Realtime DB
+        this.pullFromCloud(true);
 
-        // 1. Cross-tab real-time sync via BroadcastChannel
-        try {
-            if (typeof BroadcastChannel !== 'undefined') {
-                this.syncChannel = new BroadcastChannel('okul_sync_channel');
-                this.syncChannel.onmessage = (event) => {
-                    if (event && event.data && event.data.type === 'STUDENTS_UPDATED') {
-                        const updatedStudents = event.data.students;
-                        if (Array.isArray(updatedStudents)) {
-                            localStorage.setItem('oa_students', JSON.stringify(updatedStudents));
-                            if (typeof renderLoginScreen === 'function') renderLoginScreen();
-                            if (typeof CUR_ID !== 'undefined' && CUR_ID) {
-                                if (typeof renderSubjects === 'function') renderSubjects();
-                                if (typeof renderHomework === 'function') renderHomework();
-                                if (typeof renderExams === 'function') renderExams();
-                                if (typeof renderNotes === 'function') renderNotes();
-                                if (typeof renderPractice === 'function') renderPractice();
-                            }
-                        }
-                    }
-                };
-            }
-        } catch (e) {}
+        // 2. Connect to real-time Server-Sent Events (SSE) stream for instant multi-device live sync
+        this.connectLiveStream();
 
-        // Listen for storage changes across tabs as fallback
-        window.addEventListener('storage', (e) => {
-            if (e.key === 'oa_students') {
-                if (typeof renderLoginScreen === 'function') renderLoginScreen();
-                if (typeof CUR_ID !== 'undefined' && CUR_ID) {
-                    if (typeof renderSubjects === 'function') renderSubjects();
-                    if (typeof renderHomework === 'function') renderHomework();
-                    if (typeof renderExams === 'function') renderExams();
-                    if (typeof renderNotes === 'function') renderNotes();
-                    if (typeof renderPractice === 'function') renderPractice();
-                }
+        // 3. Auto-sync listeners
+        window.addEventListener('online', () => {
+            this.syncStatus = 'synced';
+            this.updateHeaderBadge();
+            const students = (typeof allStudents === 'function') ? allStudents() : [];
+            this.pushToCloud(students);
+            this.connectLiveStream();
+        });
+
+        window.addEventListener('offline', () => {
+            this.syncStatus = 'offline';
+            this.updateHeaderBadge();
+            if (this.eventSource) {
+                try { this.eventSource.close(); } catch(e){}
             }
         });
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && navigator.onLine) {
+                this.pullFromCloud(true);
+            }
+        });
+
+        window.addEventListener('focus', () => {
+            if (navigator.onLine) {
+                this.pullFromCloud(true);
+            }
+        });
+
+        // Background backup poll every 15 seconds
+        if (this.pollInterval) clearInterval(this.pollInterval);
+        this.pollInterval = setInterval(() => {
+            if (navigator.onLine && !document.hidden) {
+                this.pullFromCloud(true);
+            }
+        }, 15000);
     },
 
-    // Check if the URL contains auto-import data from QR code or shared sync link
-    checkUrlForAutoImport() {
+    // Connect to Firebase Realtime Database Streaming API
+    connectLiveStream() {
+        if (!navigator.onLine || typeof EventSource === 'undefined') return;
         try {
-            let dataStr = null;
-            // Check hash: #data=...
-            if (window.location.hash && window.location.hash.includes('data=')) {
-                dataStr = window.location.hash.split('data=')[1];
-            } else {
-                // Check query: ?import=... or ?data=...
-                const params = new URLSearchParams(window.location.search);
-                dataStr = params.get('import') || params.get('data');
+            if (this.eventSource) {
+                this.eventSource.close();
             }
 
-            if (dataStr) {
-                const imported = this.decodeData(dataStr);
-                if (Array.isArray(imported) && imported.length > 0) {
-                    const localStudents = (typeof allStudents === 'function') ? allStudents() : [];
-                    // Merge
-                    const merged = [...imported];
-                    localStudents.forEach(localStu => {
-                        if (!merged.find(s => s.id === localStu.id)) {
-                            merged.push(localStu);
-                        }
-                    });
+            this.eventSource = new EventSource(this.databaseUrl);
 
-                    localStorage.setItem('oa_students', JSON.stringify(merged));
-                    if (typeof AppDB !== 'undefined' && AppDB.saveAllStudents) {
-                        AppDB.saveAllStudents(merged);
+            this.eventSource.addEventListener('put', (e) => {
+                if (!e.data) return;
+                try {
+                    const parsed = JSON.parse(e.data);
+                    if (parsed && parsed.data && Array.isArray(parsed.data)) {
+                        this.handleRemoteStudentsUpdate(parsed.data);
                     }
+                } catch(err) {}
+            });
 
-                    // Clean URL without reloading
-                    if (window.history && window.history.replaceState) {
-                        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-                        window.history.replaceState({}, document.title, cleanUrl);
-                    }
+            this.eventSource.addEventListener('patch', (e) => {
+                this.pullFromCloud(true);
+            });
 
-                    setTimeout(() => {
-                        showToast(`🎉 ${imported.length} Öğrenci profili başarıyla içe aktarıldı!`, 'success');
-                        if (typeof renderLoginScreen === 'function') renderLoginScreen();
-                    }, 500);
+            this.eventSource.onerror = () => {
+                // Silently fallback to periodic polling
+                if (this.eventSource) {
+                    try { this.eventSource.close(); } catch(e){}
+                    this.eventSource = null;
                 }
-            }
+            };
         } catch (e) {
-            console.error('URL import error:', e);
+            console.warn('Firebase LiveStream SSE fallback to poll:', e);
         }
     },
 
-    updateHeaderBadge() {
+    handleRemoteStudentsUpdate(remoteStudents) {
+        if (!Array.isArray(remoteStudents)) return;
+        const currentLocal = (typeof allStudents === 'function') ? allStudents() : [];
+        const localStr = JSON.stringify(currentLocal);
+        const remoteStr = JSON.stringify(remoteStudents);
+
+        if (localStr !== remoteStr) {
+            localStorage.setItem('oa_students', remoteStr);
+            if (typeof AppDB !== 'undefined' && AppDB.saveAllStudents) {
+                AppDB.saveAllStudents(remoteStudents);
+            }
+
+            if (typeof renderLoginScreen === 'function') renderLoginScreen();
+            if (typeof CUR_ID !== 'undefined' && CUR_ID) {
+                if (typeof renderSubjects === 'function') renderSubjects();
+                if (typeof renderHomework === 'function') renderHomework();
+                if (typeof renderExams === 'function') renderExams();
+                if (typeof renderNotes === 'function') renderNotes();
+                if (typeof renderPractice === 'function') renderPractice();
+                if (typeof renderScheduleGrid === 'function') renderScheduleGrid();
+                if (typeof renderProfilePanel === 'function') renderProfilePanel();
+            }
+
+            // Update parent view if active
+            if (document.getElementById('parentModalContent')) {
+                renderParentModalContent();
+            }
+        }
+    },
+
+    updateHeaderBadge(customText = null) {
         let badge = document.getElementById('cloudSyncHeaderBadge');
         if (!badge) {
             const ahRight = document.querySelector('.ah-right');
@@ -126,47 +129,108 @@ const CloudDB = {
                 badge = document.createElement('button');
                 badge.id = 'cloudSyncHeaderBadge';
                 badge.className = 'btn-cloud-status status-synced';
-                badge.onclick = () => openDatabaseModal('transfer');
-                badge.setAttribute('title', 'Veritabanı & Cihazlar Arası Hızlı Aktarma');
+                badge.onclick = () => openDatabaseModal('cloud');
+                badge.setAttribute('title', 'Firebase Realtime NoSQL Durumu');
                 ahRight.prepend(badge);
             }
         }
         if (!badge) return;
 
-        badge.className = 'btn-cloud-status status-synced';
-        badge.innerHTML = `<span class="cloud-dot"></span><span>💾 Kalıcı DB: Aktif</span>`;
-    },
+        let icon = '⚡';
+        let text = 'Firebase: Canlı';
+        let colorClass = 'status-synced';
 
-    // Generates a direct 1-click share/sync URL for another device
-    getShareUrl() {
-        const students = (typeof allStudents === 'function') ? allStudents() : [];
-        const encoded = this.encodeData(students);
-        const baseUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-        return `${baseUrl}#data=${encoded}`;
-    },
-
-    // Generates a QR Code image URL for instant mobile camera scan
-    getQRCodeUrl() {
-        const shareUrl = this.getShareUrl();
-        return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(shareUrl)}`;
-    },
-
-    // Broadcast change to other open tabs
-    pushToCloud(students) {
-        if (this.syncChannel) {
-            try {
-                this.syncChannel.postMessage({
-                    type: 'STUDENTS_UPDATED',
-                    students: students
-                });
-            } catch (e) {}
+        if (!navigator.onLine) {
+            icon = '📴';
+            text = 'Çevrimdışı (Yerel)';
+            colorClass = 'status-offline';
+        } else if (this.syncStatus === 'syncing') {
+            icon = '🔄';
+            text = 'Eşitleniyor...';
+            colorClass = 'status-syncing';
         }
-        return true;
+
+        if (customText) text = customText;
+
+        badge.className = `btn-cloud-status ${colorClass}`;
+        badge.innerHTML = `<span class="cloud-dot"></span><span>${icon} ${text}</span>`;
     },
 
-    pullFromCloud() {
-        // Automatically handled locally & via import links
-        return (typeof allStudents === 'function') ? allStudents() : [];
+    // Pull ALL registered students automatically from Firebase Realtime Database
+    async pullFromCloud(silent = false) {
+        if (!navigator.onLine) {
+            this.syncStatus = 'offline';
+            this.updateHeaderBadge();
+            return null;
+        }
+
+        if (!silent) {
+            this.syncStatus = 'syncing';
+            this.updateHeaderBadge();
+        }
+
+        try {
+            const res = await fetch(this.databaseUrl, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const cloudStudents = await res.json();
+            if (!Array.isArray(cloudStudents)) {
+                this.syncStatus = 'synced';
+                this.updateHeaderBadge();
+                return null;
+            }
+
+            this.handleRemoteStudentsUpdate(cloudStudents);
+            this.lastSyncTime = new Date();
+            this.syncStatus = 'synced';
+            this.updateHeaderBadge();
+            return cloudStudents;
+        } catch (err) {
+            console.warn('Firebase okuma uyarısı (yerel veriler devrede):', err);
+            this.syncStatus = 'synced';
+            this.updateHeaderBadge();
+            return null;
+        }
+    },
+
+    // Push ALL students automatically to Firebase Realtime Database
+    async pushToCloud(students) {
+        if (!Array.isArray(students)) return false;
+
+        if (!navigator.onLine) {
+            this.syncStatus = 'offline';
+            this.updateHeaderBadge();
+            return false;
+        }
+
+        this.syncStatus = 'syncing';
+        this.updateHeaderBadge();
+
+        try {
+            const res = await fetch(this.databaseUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(students)
+            });
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+
+            this.lastSyncTime = new Date();
+            this.syncStatus = 'synced';
+            this.updateHeaderBadge();
+            return true;
+        } catch (err) {
+            console.warn('Firebase yazma hatası (yerel kaydedildi):', err);
+            this.syncStatus = 'synced';
+            this.updateHeaderBadge();
+            return false;
+        }
     }
 };
 

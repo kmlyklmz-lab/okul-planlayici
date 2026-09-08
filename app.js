@@ -502,54 +502,404 @@ function importData() {
   document.body.removeChild(inp);
 }
 
+// ─── 👨‍👩‍👧 PARENT LIVE TRACKING PANEL (VELİ PANELİ) ─────────
+let _parentSelectedId = null;
+
+function openParentModal(studentId = null) {
+  const students = allStudents();
+  if (studentId) {
+    _parentSelectedId = studentId;
+  } else if (!_parentSelectedId || !students.find(s => s.id === _parentSelectedId)) {
+    _parentSelectedId = CUR_ID || (students.length ? students[0].id : null);
+  }
+  renderParentModalContent();
+}
+
+function selectParentStudent(id) {
+  _parentSelectedId = id;
+  renderParentModalContent();
+}
+
+function renderParentModalContent() {
+  const students = allStudents();
+  if (!students.length) {
+    openModal('👨‍👩‍👧 Veli Canlı Takip Paneli', `
+      <div style="text-align:center;padding:30px 10px;">
+        <div style="font-size:3rem;margin-bottom:10px;">🎒</div>
+        <h3 style="color:#1e293b;margin-bottom:6px;">Kayıtlı Öğrenci Bulunamadı</h3>
+        <p style="color:var(--muted);font-size:.82rem;">Henüz bir öğrenci profili oluşturulmamış veya buluttan yükleniyor.</p>
+        <button class="btn-login" style="margin-top:14px;background:#3b82f6;color:#fff;" onclick="closeModal();showScreen('register');">➕ Öğrenci Oluştur</button>
+      </div>
+    `);
+    return;
+  }
+
+  const s = students.find(x => x.id === _parentSelectedId) || students[0];
+  _parentSelectedId = s.id;
+
+  // Student chips (if multiple students)
+  let stuChips = '';
+  if (students.length > 1) {
+    stuChips = `
+      <div style="margin-bottom:10px;">
+        <div style="font-size:.72rem;font-weight:800;color:rgba(255,255,255,.9);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;">Öğrenci Değiştir:</div>
+        <div class="parent-stu-chips">
+          ${students.map(st => `
+            <button class="parent-chip ${st.id === s.id ? 'active' : ''}" onclick="selectParentStudent('${st.id}')">
+              <span>${st.avatar}</span> <span>${escH(st.name)} (${st.grade}. Sınıf)</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // Live Today's Schedule & Current Class
+  const now = new Date();
+  const dayIndex = (now.getDay() === 0) ? 6 : (now.getDay() - 1); // 0: Pzt .. 6: Paz
+  const dayNames = ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
+  const curHour = now.getHours();
+
+  // Find schedule slot
+  let curSlotName = 'Serbest Zaman';
+  let curSlotEmoji = '🌟';
+  let todayLessons = [];
+  
+  if (s.weeklySchedules) {
+    const monday = new Date(now);
+    const day = monday.getDay();
+    monday.setDate(monday.getDate() + (day === 0 ? -6 : 1 - day));
+    monday.setHours(0,0,0,0);
+    const weekKey = monday.toISOString().slice(0,10);
+    const weekSch = s.weeklySchedules[weekKey] || {};
+    const todaySch = weekSch[dayIndex] || {};
+
+    for (let h = 6; h <= 22; h++) {
+      const slotVal = todaySch[h];
+      if (slotVal) {
+        todayLessons.push({ hour: h, title: slotVal });
+        if (h === curHour) {
+          curSlotName = slotVal;
+          curSlotEmoji = '📖';
+        }
+      }
+    }
+  }
+
+  // Homework calculations
+  const homework = s.homework || [];
+  const pendingHw = homework.filter(h => !h.completed);
+  const completedHw = homework.filter(h => h.completed);
+  const overdueHw = pendingHw.filter(h => h.dueDate && new Date(h.dueDate) < new Date(now.toDateString()));
+  const hwCompletionRate = homework.length ? Math.round((completedHw.length / homework.length) * 100) : 100;
+
+  // Exams calculations
+  const exams = s.exams || [];
+  const upcomingExams = exams.filter(e => e.date && new Date(e.date) >= new Date(now.toDateString()))
+                             .sort((a,b) => new Date(a.date) - new Date(b.date));
+  const gradedExams = exams.filter(e => e.score !== undefined && e.score !== null && e.score !== '');
+  const examAvg = gradedExams.length ? (gradedExams.reduce((sum, e) => sum + Number(e.score), 0) / gradedExams.length).toFixed(1) : '-';
+
+  // Practice & questions
+  const practice = s.practice || [];
+  const totalQuestions = practice.reduce((sum, p) => sum + (Number(p.total) || 0), 0);
+  const totalCorrect = practice.reduce((sum, p) => sum + (Number(p.correct) || 0), 0);
+  const totalWrong = practice.reduce((sum, p) => sum + (Number(p.wrong) || 0), 0);
+
+  // Dynamic AI Parent Guidance tips
+  let aiTips = [];
+  if (overdueHw.length > 0) {
+    aiTips.push(`⚠️ <strong>${overdueHw.length} adet teslim tarihi geçmiş ödev</strong> var. Öğrencinizle birlikte bu ödevleri gözden geçirebilirsiniz.`);
+  } else if (pendingHw.length > 0) {
+    aiTips.push(`📝 Bekleyen <strong>${pendingHw.length} ödevi</strong> bulunuyor. Akşam çalışma saati planlaması yapmanız faydalı olacaktır.`);
+  } else {
+    aiTips.push(`🎉 <strong>Tüm ödevler tamamlanmış!</strong> Öğrencinizi bu disiplinli çalışması için tebrik edebilirsiniz.`);
+  }
+
+  if (upcomingExams.length > 0) {
+    const nextExam = upcomingExams[0];
+    const diffDays = Math.ceil((new Date(nextExam.date) - new Date(now.toDateString())) / (1000*60*60*24));
+    aiTips.push(`🎯 En yakın sınav: <strong>${escH(nextExam.subject || nextExam.title)}</strong> (${diffDays === 0 ? 'Bugün!' : diffDays + ' gün kaldı'}). Tekrar soru çözümü yapması önerilir.`);
+  }
+
+  if (totalQuestions > 0) {
+    const accuracy = Math.round((totalCorrect / totalQuestions) * 100);
+    aiTips.push(`📊 Toplam <strong>${totalQuestions} soru</strong> çözüldü (%${accuracy} başarı). Yanlış yapılan soruların analizini kontrol etmesini hatırlatın.`);
+  }
+
+  const html = `
+    <div id="parentModalContent" class="parent-container">
+      <!-- Parent Header Banner -->
+      <div class="parent-banner">
+        <div class="parent-banner-top">
+          <div class="parent-banner-title">
+            <span>${s.avatar}</span>
+            <span>${escH(s.name)}</span>
+            <span style="font-size:.78rem;opacity:.85;font-weight:600;">(${s.grade}. Sınıf)</span>
+          </div>
+          <div class="parent-live-tag">
+            <span>Firebase Canlı Bağlantı</span>
+          </div>
+        </div>
+        ${stuChips}
+      </div>
+
+      <!-- Quick Action Bar -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn-login" style="margin-top:0;flex:1;min-width:180px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;font-size:.76rem;padding:9px;" onclick="copyParentSummaryReport('${s.id}')">
+          📲 WhatsApp Özet Raporunu Kopyala
+        </button>
+        <button class="notice-imp" style="margin-left:0;padding:8px 12px;background:#f8faff;border-color:var(--bdr);color:var(--txt);" onclick="CloudDB.pullFromCloud().then(()=>showToast('🔄 Veriler güncellendi!','success'))">
+          🔄 Canlı Yenile
+        </button>
+      </div>
+
+      <!-- Live Lesson Alert -->
+      <div class="parent-cur-lesson-box">
+        <div class="parent-cur-lesson-icon">${curSlotEmoji}</div>
+        <div style="flex:1;">
+          <div style="font-size:.68rem;font-weight:900;color:#166534;text-transform:uppercase;letter-spacing:.5px;">🟢 Şu Anki Planlanan Aktivite (${curHour}:00 - ${curHour+1}:00)</div>
+          <div style="font-size:.9rem;font-weight:800;color:#14532d;">${escH(curSlotName)}</div>
+        </div>
+      </div>
+
+      <!-- 2-Column Grid -->
+      <div class="parent-sec-grid">
+        <!-- Card 1: Homework -->
+        <div class="parent-card">
+          <div class="parent-card-h">
+            <span>📝 Ödev Takip Durumu</span>
+            <span class="parent-badge-count">%${hwCompletionRate} Tamam</span>
+          </div>
+          <div style="display:flex;gap:6px;font-size:.7rem;font-weight:800;margin-bottom:4px;">
+            <span style="color:#3b82f6;">Bekleyen: ${pendingHw.length}</span> · 
+            <span style="color:#10b981;">Biten: ${completedHw.length}</span>
+            ${overdueHw.length ? ` · <span style="color:#ef4444;">Geciken: ${overdueHw.length}</span>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;max-height:160px;overflow-y:auto;">
+            ${pendingHw.length ? pendingHw.slice(0, 5).map(h => {
+              const isOver = h.dueDate && new Date(h.dueDate) < new Date(now.toDateString());
+              return `
+                <div class="parent-hw-item ${isOver ? 'overdue' : ''}">
+                  <div>
+                    <span style="font-weight:800;">${escH(h.subject || 'Ders')}</span>: ${escH(h.title)}
+                  </div>
+                  <div style="font-size:.66rem;opacity:.85;white-space:nowrap;">
+                    ${h.dueDate ? '📅 ' + h.dueDate : ''}
+                  </div>
+                </div>
+              `;
+            }).join('') : '<div class="parent-list-empty">✨ Bekleyen ödev yok!</div>'}
+          </div>
+        </div>
+
+        <!-- Card 2: Exams & Countdown -->
+        <div class="parent-card">
+          <div class="parent-card-h">
+            <span>📊 Sınavlar & Geri Sayım</span>
+            <span class="parent-badge-count">Ort: ${examAvg}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;max-height:160px;overflow-y:auto;">
+            ${upcomingExams.length ? upcomingExams.map(e => {
+              const diffDays = Math.ceil((new Date(e.date) - new Date(now.toDateString())) / (1000*60*60*24));
+              return `
+                <div class="parent-hw-item" style="background:#eff6ff;border-color:#bfdbfe;">
+                  <div>
+                    <strong style="color:#1e40af;">${escH(e.subject || e.title)}</strong>
+                    <div style="font-size:.66rem;color:var(--muted);">${e.date}</div>
+                  </div>
+                  <div style="background:#3b82f6;color:#fff;font-size:.66rem;font-weight:900;padding:2px 7px;border-radius:20px;">
+                    ${diffDays === 0 ? 'Bugün!' : diffDays + ' gün kaldı'}
+                  </div>
+                </div>
+              `;
+            }).join('') : '<div class="parent-list-empty">📅 Yakın tarihte sınav görünmüyor.</div>'}
+          </div>
+        </div>
+
+        <!-- Card 3: Today's Full Schedule -->
+        <div class="parent-card">
+          <div class="parent-card-h">
+            <span>🗓️ ${dayNames[dayIndex]} Programı</span>
+            <span class="parent-badge-count">${todayLessons.length} Ders/Aktivite</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;">
+            ${todayLessons.length ? todayLessons.map(l => `
+              <div style="display:flex;justify-content:space-between;padding:5px 8px;border-radius:6px;background:${l.hour === curHour ? '#dcfce7' : '#f8faff'};font-size:.73rem;border:1px solid ${l.hour === curHour ? '#86efac' : 'var(--bdr)'};">
+                <span style="font-weight:800;color:${l.hour === curHour ? '#166534' : 'inherit'};">${l.hour}:00 - ${l.hour+1}:00</span>
+                <span style="font-weight:700;">${escH(l.title)} ${l.hour === curHour ? '🟢' : ''}</span>
+              </div>
+            `).join('') : '<div class="parent-list-empty">Bugün için özel plan girilmemiş.</div>'}
+          </div>
+        </div>
+
+        <!-- Card 4: Study & Questions -->
+        <div class="parent-card">
+          <div class="parent-card-h">
+            <span>🔢 Soru Çözme & Çalışma</span>
+            <span class="parent-badge-count">${totalQuestions} Soru</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center;">
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:6px;">
+              <div style="font-size:1.1rem;font-weight:900;color:#16a34a;">${totalCorrect}</div>
+              <div style="font-size:.62rem;font-weight:800;color:#15803d;">Doğru</div>
+            </div>
+            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:6px;">
+              <div style="font-size:1.1rem;font-weight:900;color:#dc2626;">${totalWrong}</div>
+              <div style="font-size:.62rem;font-weight:800;color:#b91c1c;">Yanlış</div>
+            </div>
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:6px;">
+              <div style="font-size:1.1rem;font-weight:900;color:#2563eb;">${totalQuestions ? ((totalCorrect - (totalWrong/4)).toFixed(1)) : 0}</div>
+              <div style="font-size:.62rem;font-weight:800;color:#1d4ed8;">Net</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Parent Guidance Box -->
+      <div class="parent-ai-box">
+        <div style="display:flex;align-items:center;gap:6px;font-weight:900;color:#6b21a8;margin-bottom:6px;font-size:.84rem;">
+          <span>🤖</span> <span>Yapay Zeka Veli Rehberi</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:.76rem;color:#581c87;line-height:1.45;">
+          ${aiTips.map(tip => `<div>• ${tip}</div>`).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+
+  openModal('👨‍👩‍👧 Veli Canlı Takip Paneli', html);
+}
+
+// Generate formatted WhatsApp summary for parents
+function copyParentSummaryReport(studentId) {
+  const s = getStudent(studentId);
+  if (!s) return;
+  const now = new Date();
+  const dayNames = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+  const todayName = dayNames[now.getDay()];
+  const hw = s.homework || [];
+  const pendingHw = hw.filter(h => !h.completed);
+  const exams = s.exams || [];
+  const upcomingExams = exams.filter(e => e.date && new Date(e.date) >= new Date(now.toDateString()));
+
+  let text = `🎒 *Okul Asistanım - Günlük Veli Özeti*\n`;
+  text += `👤 *Öğrenci:* ${s.avatar} ${s.name} (${s.grade}. Sınıf)\n`;
+  text += `📅 *Tarih:* ${now.toLocaleDateString('tr-TR')} ${todayName}\n\n`;
+
+  text += `📝 *Ödev Durumu:*\n`;
+  if (pendingHw.length === 0) {
+    text += `✅ Harika! Bekleyen ödev bulunmuyor.\n`;
+  } else {
+    text += `⏳ Bekleyen ${pendingHw.length} ödev var:\n`;
+    pendingHw.slice(0, 5).forEach(h => {
+      text += `  • ${h.subject || 'Ders'}: ${h.title} (Son: ${h.dueDate || '-'})\n`;
+    });
+  }
+
+  text += `\n📊 *Yaklaşan Sınavlar:*\n`;
+  if (upcomingExams.length === 0) {
+    text += `✨ Yakın tarihte sınav görünmüyor.\n`;
+  } else {
+    upcomingExams.slice(0, 3).forEach(e => {
+      const diff = Math.ceil((new Date(e.date) - new Date(now.toDateString())) / (1000*60*60*24));
+      text += `  • ${e.subject || e.title}: ${e.date} (${diff === 0 ? 'Bugün!' : diff + ' gün kaldı'})\n`;
+    });
+  }
+
+  text += `\n🔗 *Canlı Takip:* https://kmlyklmz-lab.github.io/okul-planlayici/`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('📋 WhatsApp raporu panoya kopyalandı!', '#10b981');
+  }).catch(() => {
+    showToast('⚠️ Kopyalanamadı, izin veriniz.', '#ef4444');
+  });
+}
+
 // ─── DATABASE MODAL & CRUD LOGS ─────────────────────
-let _dbCurTab = 'logs';
+let _dbCurTab = 'cloud';
 
 async function openDatabaseModal(initialTab = null) {
-  _dbCurTab = initialTab || 'logs';
+  _dbCurTab = initialTab || 'cloud';
   await renderDatabaseModalContent();
 }
 
 async function renderDatabaseModalContent() {
   const stats = (typeof AppDB !== 'undefined') ? await AppDB.getStats() : { studentCount: allStudents().length, logCount: 0, storageType: 'LocalStorage' };
   const logs = (typeof AppDB !== 'undefined') ? await AppDB.getLogs(60) : [];
-  const cur = curStudent();
   const students = allStudents();
 
   let html = `
     <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;max-height:75vh;overflow-y:auto;">
       <!-- Tabs -->
       <div class="db-tabs" style="overflow-x:auto;white-space:nowrap;">
-        <button class="db-tab-btn ${_dbCurTab === 'transfer' ? 'active' : ''}" onclick="setDbTab('transfer')">📱 Cihazlar Arası Aktar & QR</button>
+        <button class="db-tab-btn ${_dbCurTab === 'cloud' ? 'active' : ''}" onclick="setDbTab('cloud')">🔥 Firebase Realtime DB</button>
         <button class="db-tab-btn ${_dbCurTab === 'logs' ? 'active' : ''}" onclick="setDbTab('logs')">📜 İşlem Kütüğü (${logs.length})</button>
         <button class="db-tab-btn ${_dbCurTab === 'backup' ? 'active' : ''}" onclick="setDbTab('backup')">💾 JSON Yedekleme</button>
         <button class="db-tab-btn ${_dbCurTab === 'stats' ? 'active' : ''}" onclick="setDbTab('stats')">📊 DB Durumu</button>
       </div>
 
-      <!-- Tab: Transfer & QR -->
-      <div id="dbTabTransfer" style="${_dbCurTab === 'transfer' ? 'display:flex;flex-direction:column;gap:10px;' : 'display:none;'}">
+      <!-- Tab: Cloud Firebase DB -->
+      <div id="dbTabCloud" style="${_dbCurTab === 'cloud' ? 'display:flex;flex-direction:column;gap:10px;' : 'display:none;'}">
         <div class="ai-card" style="background:#eff6ff;border-color:#bfdbfe;">
-          <h4 style="color:#1e40af;">📱 Telefon veya Başka Tarayıcıya Anında Aktar</h4>
-          <p style="font-size:.76rem;color:#1e3a8a;line-height:1.45;">
-            Hiçbir üyelik, şifre veya 3. taraf girişi gerekmeden; tüm öğrencilerinizi (<strong>${students.length} Kayıtlı Öğrenci</strong>), ders programlarınızı ve notlarınızı telefonunuza veya başka bir bilgisayara anında aktarın.
-          </p>
-
-          <div style="display:flex;gap:14px;align-items:center;background:#fff;border:1.5px solid #93c5fd;border-radius:10px;padding:12px;margin-top:6px;flex-wrap:wrap;">
-            <div style="background:#fff;padding:6px;border:1px solid var(--bdr);border-radius:8px;display:flex;justify-content:center;align-items:center;margin:0 auto;">
-              <img src="${CloudDB.getQRCodeUrl()}" alt="QR Kod" style="width:160px;height:160px;display:block;border-radius:6px;"/>
-            </div>
-            <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:8px;">
-              <div style="font-weight:700;color:#1e40af;font-size:.82rem;">1. Telefon Kamerasıyla Okutun:</div>
-              <div style="font-size:.72rem;color:var(--muted);line-height:1.4;">Telefonunuzun kamerasını soldaki QR koda tutun; açılan linke tıkladığınız anda tüm verileriniz telefonunuza aktarılır.</div>
-              
-              <div style="font-weight:700;color:#1e40af;font-size:.82rem;margin-top:4px;">2. Veya Linki Kopyalayın:</div>
-              <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;" onclick="navigator.clipboard.writeText(CloudDB.getShareUrl());showToast('📋 Hızlı aktarma linki panoya kopyalandı!','success');">📋 Hızlı Aktarma Linkini Kopyala</button>
-            </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <h4 style="color:#1e40af;">🔥 Google Firebase NoSQL Realtime Engine</h4>
+            <span style="background:#10b981;color:#fff;font-size:.66rem;font-weight:900;padding:3px 8px;border-radius:20px;">CANLI & AKTİF</span>
           </div>
+          <p style="font-size:.76rem;color:#1e3a8a;line-height:1.45;">
+            Tüm öğrenci kayıtları, ders programları, ödevler ve sınavlar <strong>Google Firebase Realtime Database</strong> üzerinde anlık senkronize edilmektedir.
+          </p>
+          <div style="background:#fff;border:1px solid #bfdbfe;border-radius:8px;padding:9px;margin-top:6px;font-family:monospace;font-size:.72rem;word-break:break-all;color:#1e40af;">
+            📡 <strong>Bulut Adresi:</strong><br/>
+            ${CloudDB.databaseUrl}
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+            <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;" onclick="CloudDB.pullFromCloud().then(()=>showToast('☁️ Firebase buluttan eşitlendi!','success'))">
+              🔄 Buluttan Şimdi Çek
+            </button>
+            <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#10b981,#059669);color:#fff;" onclick="CloudDB.pushToCloud(allStudents()).then(()=>showToast('☁️ Firebase buluta yüklendi!','success'))">
+              ⚡ Şimdi Buluta Yolla
+            </button>
+          </div>
+        </div>
+
+        <div class="ai-card">
+          <h4>📱 Öğrenci & Veli Çapraz Cihaz Kullanımı</h4>
+          <p style="font-size:.76rem;color:var(--muted);line-height:1.4;">
+            Öğrenci bilgisayardan veya tabletten ödevlerini girdiğinde, veli kendi telefonundaki <strong>👨‍👩‍👧 Veli Paneli</strong> üzerinden aynı saniye içerisinde canlı olarak takip edebilir.
+          </p>
+          <button class="btn-login" style="margin-top:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;" onclick="closeModal();openParentModal();">
+            👨‍👩‍👧 Veli Panelini Aç
+          </button>
         </div>
       </div>
 
-      <!-- Tab 3: Backup & Restore -->
+      <!-- Tab: CRUD Logs -->
+      <div id="dbTabLogs" style="${_dbCurTab === 'logs' ? 'display:flex;flex-direction:column;gap:10px;' : 'display:none;'}">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:.76rem;color:var(--muted);">IndexedDB ve LocalStorage üzerinde gerçekleşen son işlemler:</span>
+          <button class="btn-sm" onclick="clearDbLogsUI()">🧹 Kütüğü Temizle</button>
+        </div>
+        <div style="max-height:260px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;">
+          <table class="db-logs-table">
+            <thead>
+              <tr><th>Zaman</th><th>İşlem</th><th>Koleksiyon</th><th>Detay</th></tr>
+            </thead>
+            <tbody>
+              ${logs.length ? logs.map(l => `
+                <tr>
+                  <td style="color:var(--muted);white-space:nowrap;">${l.time ? l.time.slice(11,19) : '-'}</td>
+                  <td><span class="db-badge ${l.type === 'DELETE' ? 'islem-silme' : (l.type === 'INSERT' ? 'islem-ekleme' : '')}">${l.type}</span></td>
+                  <td><strong>${escH(l.store)}</strong></td>
+                  <td style="color:var(--muted);">${escH(l.detail)}</td>
+                </tr>
+              `).join('') : '<tr><td colspan="4" style="text-align:center;padding:14px;color:var(--muted);">Henüz kayıtlı işlem yok.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab: Backup & Restore -->
       <div id="dbTabBackup" style="${_dbCurTab === 'backup' ? 'display:flex;flex-direction:column;gap:10px;' : 'display:none;'}">
         <div class="ai-card">
           <h4>📥 JSON Veritabanı Yedeği İndir</h4>
@@ -568,10 +918,10 @@ async function renderDatabaseModalContent() {
         </div>
       </div>
 
-      <!-- Tab 4: Stats -->
+      <!-- Tab: Stats -->
       <div id="dbTabStats" style="${_dbCurTab === 'stats' ? 'display:block;' : 'display:none;'}">
         <div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:8px;">
-          Veritabanı Katmanı: <strong style="color:#10b981;">${stats.storageType}</strong> · <strong style="color:#3b82f6;">Cloud NoSQL Aktif</strong>
+          Veritabanı Katmanı: <strong style="color:#10b981;">${stats.storageType}</strong> · <strong style="color:#3b82f6;">Firebase NoSQL Aktif</strong>
         </div>
         <div class="db-stat-grid">
           <div class="db-stat-card"><div class="db-stat-val">${stats.studentCount}</div><div class="db-stat-lbl">Kayıtlı Öğrenci</div></div>
@@ -585,7 +935,7 @@ async function renderDatabaseModalContent() {
     </div>
   `;
 
-  openModal('💾 Kalıcı Veritabanı & İşlem Kütüğü (IndexedDB + Cloud NoSQL)', html);
+  openModal('💾 Google Firebase NoSQL & Kalıcı Veritabanı', html);
 }
 
 function setDbTab(tabName) {

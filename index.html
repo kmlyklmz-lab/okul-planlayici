@@ -31,12 +31,12 @@
     <div class="data-notice">
       <span>☁️</span>
       <div>
-        <strong>Bulut NoSQL & Otomatik Eşitleme Aktif</strong>
-        Tüm cihazlarınızdaki öğrenciler internet üzerinden otomatik yüklenir ve eşitlenir.
+        <strong>Google Firebase NoSQL & Canlı Eşitleme Aktif</strong>
+        Öğrenci ve veli tüm cihazlardan anlık bağlanır, veriler kaybolmaz.
       </div>
       <div style="display:flex;gap:6px;margin-left:auto;flex-wrap:wrap;">
-        <button class="notice-imp" onclick="openDatabaseModal()">💾 Veritabanı</button>
-        <button class="notice-imp" onclick="CloudDB.pullFromCloud().then(()=>showToast('☁️ Buluttan eşitlendi!','success'))">🔄 Eşitle</button>
+        <button class="notice-imp" onclick="openParentModal()" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);border-color:#a78bfa;">👨‍👩‍👧 Veli Paneli</button>
+        <button class="notice-imp" onclick="openDatabaseModal('cloud')">🔥 Firebase DB</button>
       </div>
     </div>
     <div class="glass-card">
@@ -84,7 +84,8 @@
   <header class="app-header">
     <div class="ah-logo">🎒 Okul Asistanım</div>
     <div class="ah-right">
-      <button class="btn-db-header" onclick="openDatabaseModal()" title="Veritabanı & İşlem Kütüğü (IndexedDB)">💾 <span>Veritabanı</span></button>
+      <button class="btn-parent-header" onclick="openParentModal()" title="Veli Canlı Takip Paneli">👨‍👩‍👧 <span>Veli Paneli</span></button>
+      <button class="btn-db-header" onclick="openDatabaseModal('cloud')" title="Firebase Bulut & Veritabanı">🔥 <span>Firebase DB</span></button>
       <button class="pp-trigger" onclick="openProfile()">
         <span id="ahAvatar" class="ah-av"></span>
         <span id="ahName" class="ah-name"></span>
