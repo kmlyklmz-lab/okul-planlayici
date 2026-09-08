@@ -111,7 +111,10 @@
     <div class="ah-right">
       <!-- Child switcher dropdown when in Parent Admin mode -->
       <select id="parentChildSelect" class="parent-header-select" style="display:none;" onchange="parentSwitchStudent(this.value)" title="Yönetilen Öğrenciyi Değiştir"></select>
-      <button class="btn-db-header" onclick="openDatabaseModal('cloud')" title="Firebase Bulut NoSQL Veritabanı">🔥 <span>Firebase Bulut</span></button>
+      <!-- Single Live Sync & Backup Button -->
+      <button id="cloudSyncHeaderBadge" class="btn-cloud-status status-synced" onclick="openDatabaseModal('cloud')" title="Canlı Kayıt, Eşitleme & Yedekleme İşlemleri">
+        <span class="cloud-dot"></span><span>🟢 Canlı Kayıt & Eşitleme</span>
+      </button>
       <button id="btnProfileTrigger" class="pp-trigger" onclick="openProfile()">
         <span id="ahAvatar" class="ah-av"></span>
         <span id="ahName" class="ah-name"></span>

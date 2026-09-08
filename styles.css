@@ -905,14 +905,14 @@ select.field option{background:#1e3a8a;color:#fff}
 
 /* CLOUD NOSQL STATUS BADGE */
 .btn-cloud-status {
-  padding: 6px 11px;
+  padding: 6px 12px;
   border-radius: 9px;
-  border: 1.5px solid var(--bdr);
-  background: #f8faff;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.15);
   font-family: 'Nunito', sans-serif;
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   font-weight: 800;
-  color: var(--txt);
+  color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -921,18 +921,18 @@ select.field option{background:#1e3a8a;color:#fff}
 }
 .btn-cloud-status:hover {
   transform: translateY(-1px);
-  background: #eff6ff;
-  border-color: #bfdbfe;
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 .cloud-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #34d399;
   flex-shrink: 0;
 }
-.btn-cloud-status.status-synced .cloud-dot { background: #10b981; box-shadow: 0 0 6px rgba(16, 185, 129, 0.6); }
-.btn-cloud-status.status-syncing .cloud-dot { background: #f59e0b; }
+.btn-cloud-status.status-synced .cloud-dot { background: #10b981; box-shadow: 0 0 8px rgba(52, 211, 153, 0.8); }
+.btn-cloud-status.status-syncing .cloud-dot { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.8); }
 .btn-cloud-status.status-offline .cloud-dot { background: #94a3b8; }
 .btn-cloud-status.status-error .cloud-dot { background: #ef4444; }
 

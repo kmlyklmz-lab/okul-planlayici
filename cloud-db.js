@@ -133,23 +133,23 @@ const CloudDB = {
                 badge.id = 'cloudSyncHeaderBadge';
                 badge.className = 'btn-cloud-status status-synced';
                 badge.onclick = () => openDatabaseModal('cloud');
-                badge.setAttribute('title', 'Firebase Realtime NoSQL Durumu');
+                badge.setAttribute('title', 'Canlı Kayıt & Yedekleme Durumu');
                 ahRight.prepend(badge);
             }
         }
         if (!badge) return;
 
-        let icon = '⚡';
-        let text = 'Firebase: Canlı';
+        let icon = '🟢';
+        let text = 'Canlı Kayıt & Eşitleme';
         let colorClass = 'status-synced';
 
         if (!navigator.onLine) {
             icon = '📴';
-            text = 'Çevrimdışı (Yerel)';
+            text = 'Çevrimdışı (Yerel Kayıt)';
             colorClass = 'status-offline';
         } else if (this.syncStatus === 'syncing') {
             icon = '🔄';
-            text = 'Eşitleniyor...';
+            text = 'Kaydediliyor...';
             colorClass = 'status-syncing';
         }
 
