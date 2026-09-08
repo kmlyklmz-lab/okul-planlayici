@@ -113,7 +113,9 @@
       <select id="parentChildSelect" class="parent-header-select" style="display:none;" onchange="parentSwitchStudent(this.value)" title="Yönetilen Öğrenciyi Değiştir"></select>
       <!-- Single Live Sync & Backup Button -->
       <button id="cloudSyncHeaderBadge" class="btn-cloud-status status-synced" onclick="openDatabaseModal('cloud')" title="Canlı Kayıt, Eşitleme & Yedekleme İşlemleri">
-        <span class="cloud-dot"></span><span>🟢 Canlı Kayıt & Eşitleme</span>
+        <span class="cloud-dot"></span>
+        <span class="cloud-text-full">🟢 Canlı Kayıt & Eşitleme</span>
+        <span class="cloud-text-short">🟢 Canlı</span>
       </button>
       <button id="btnProfileTrigger" class="pp-trigger" onclick="openProfile()">
         <span id="ahAvatar" class="ah-av"></span>

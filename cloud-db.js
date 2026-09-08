@@ -140,23 +140,29 @@ const CloudDB = {
         if (!badge) return;
 
         let icon = '🟢';
-        let text = 'Canlı Kayıt & Eşitleme';
+        let fullText = 'Canlı Kayıt & Eşitleme';
+        let shortText = 'Canlı';
         let colorClass = 'status-synced';
 
         if (!navigator.onLine) {
             icon = '📴';
-            text = 'Çevrimdışı (Yerel Kayıt)';
+            fullText = 'Çevrimdışı (Yerel Kayıt)';
+            shortText = 'Çevrimdışı';
             colorClass = 'status-offline';
         } else if (this.syncStatus === 'syncing') {
             icon = '🔄';
-            text = 'Kaydediliyor...';
+            fullText = 'Kaydediliyor...';
+            shortText = 'Eşitleniyor';
             colorClass = 'status-syncing';
         }
 
-        if (customText) text = customText;
+        if (customText) {
+            fullText = customText;
+            shortText = customText;
+        }
 
         badge.className = `btn-cloud-status ${colorClass}`;
-        badge.innerHTML = `<span class="cloud-dot"></span><span>${icon} ${text}</span>`;
+        badge.innerHTML = `<span class="cloud-dot"></span><span class="cloud-text-full">${icon} ${fullText}</span><span class="cloud-text-short">${icon} ${shortText}</span>`;
     },
 
     // Pull ALL registered students automatically from Firebase Realtime Database
