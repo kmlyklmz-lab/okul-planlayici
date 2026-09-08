@@ -767,7 +767,34 @@ function selectParentStudent(id) {
   renderParentModalContent();
 }
 
-function renderParentModalContent() {
+// Helper to safely parse schedule slot value and return clean emoji + label
+function parseScheduleSlot(slotVal, student) {
+  if (!slotVal) return { emoji: '🌟', title: 'Serbest Zaman' };
+  const acts = (student && student.activities && student.activities.length) ? student.activities : (typeof DEFAULT_ACTIVITIES !== 'undefined' ? DEFAULT_ACTIVITIES : []);
+  
+  if (typeof slotVal === 'string') {
+    const foundAct = acts.find(a => a.id === slotVal || a.label.toLowerCase() === slotVal.toLowerCase());
+    return {
+      emoji: foundAct ? foundAct.emoji : '📖',
+      title: foundAct ? foundAct.label : slotVal
+    };
+  }
+
+  if (typeof slotVal === 'object') {
+    const catId = slotVal.cat || slotVal.id || slotVal.actId;
+    const foundAct = acts.find(a => a.id === catId);
+    let title = foundAct ? foundAct.label : (slotVal.label || slotVal.title || slotVal.name || 'Ders/Aktivite');
+    if (slotVal.note) title += ` (${slotVal.note})`;
+    return {
+      emoji: foundAct ? foundAct.emoji : '📖',
+      title: title
+    };
+  }
+
+  return { emoji: '📖', title: String(slotVal) };
+}
+
+async function renderParentModalContent() {
   const students = allStudents();
   if (!students.length) {
     openModal('👨‍👩‍👧 Veli Canlı Takip Paneli', `
@@ -807,7 +834,7 @@ function renderParentModalContent() {
   const dayNames = ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
   const curHour = now.getHours();
 
-  // Find schedule slot
+  // Find schedule slot safely
   let curSlotName = 'Serbest Zaman';
   let curSlotEmoji = '🌟';
   let todayLessons = [];
@@ -824,10 +851,11 @@ function renderParentModalContent() {
     for (let h = 6; h <= 22; h++) {
       const slotVal = todaySch[h];
       if (slotVal) {
-        todayLessons.push({ hour: h, title: slotVal });
+        const parsed = parseScheduleSlot(slotVal, s);
+        todayLessons.push({ hour: h, title: parsed.title, emoji: parsed.emoji });
         if (h === curHour) {
-          curSlotName = slotVal;
-          curSlotEmoji = '📖';
+          curSlotName = parsed.title;
+          curSlotEmoji = parsed.emoji;
         }
       }
     }
@@ -835,8 +863,8 @@ function renderParentModalContent() {
 
   // Homework calculations
   const homework = s.homework || [];
-  const pendingHw = homework.filter(h => !h.completed);
-  const completedHw = homework.filter(h => h.completed);
+  const pendingHw = homework.filter(h => !h.completed && !h.done);
+  const completedHw = homework.filter(h => h.completed || h.done);
   const overdueHw = pendingHw.filter(h => h.dueDate && new Date(h.dueDate) < new Date(now.toDateString()));
   const hwCompletionRate = homework.length ? Math.round((completedHw.length / homework.length) * 100) : 100;
 
@@ -853,6 +881,10 @@ function renderParentModalContent() {
   const totalCorrect = practice.reduce((sum, p) => sum + (Number(p.correct) || 0), 0);
   const totalWrong = practice.reduce((sum, p) => sum + (Number(p.wrong) || 0), 0);
 
+  // Student specific logs for parent auditing
+  const allLogs = (typeof AppDB !== 'undefined') ? await AppDB.getLogs(150) : [];
+  const studentLogs = allLogs.filter(l => !l.studentId || l.studentId === s.id);
+
   // Dynamic AI Parent Guidance tips
   let aiTips = [];
   if (overdueHw.length > 0) {
@@ -866,7 +898,7 @@ function renderParentModalContent() {
   if (upcomingExams.length > 0) {
     const nextExam = upcomingExams[0];
     const diffDays = Math.ceil((new Date(nextExam.date) - new Date(now.toDateString())) / (1000*60*60*24));
-    aiTips.push(`🎯 En yakın sınav: <strong>${escH(nextExam.subject || nextExam.title)}</strong> (${diffDays === 0 ? 'Bugün!' : diffDays + ' gün kaldı'}). Tekrar soru çözümü yapması önerilir.`);
+    aiTips.push(`🎯 En yakın sınav: <strong>${escH(nextExam.subject || nextExam.title || 'Ders')}</strong> (${diffDays === 0 ? 'Bugün!' : diffDays + ' gün kaldı'}). Tekrar soru çözümü yapması önerilir.`);
   }
 
   if (totalQuestions > 0) {
@@ -885,7 +917,7 @@ function renderParentModalContent() {
             <span style="font-size:.78rem;opacity:.85;font-weight:600;">(${s.grade}. Sınıf)</span>
           </div>
           <div class="parent-live-tag">
-            <span>Firebase Canlı Bağlantı</span>
+            <span>Canlı Eşitleme Aktif</span>
           </div>
         </div>
         ${stuChips}
@@ -896,7 +928,7 @@ function renderParentModalContent() {
         <button class="btn-login" style="margin-top:0;flex:1;min-width:180px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;font-size:.76rem;padding:9px;" onclick="copyParentSummaryReport('${s.id}')">
           📲 WhatsApp Özet Raporunu Kopyala
         </button>
-        <button class="notice-imp" style="margin-left:0;padding:8px 12px;background:#f8faff;border-color:var(--bdr);color:var(--txt);" onclick="CloudDB.pullFromCloud().then(()=>showToast('🔄 Veriler güncellendi!','success'))">
+        <button class="notice-imp" style="margin-left:0;padding:8px 12px;background:#f8faff;border-color:var(--bdr);color:var(--txt);" onclick="CloudDB.pullFromCloud().then(()=>renderParentModalContent())">
           🔄 Canlı Yenile
         </button>
       </div>
@@ -952,7 +984,7 @@ function renderParentModalContent() {
               return `
                 <div class="parent-hw-item" style="background:#eff6ff;border-color:#bfdbfe;">
                   <div>
-                    <strong style="color:#1e40af;">${escH(e.subject || e.title)}</strong>
+                    <strong style="color:#1e40af;">${escH(e.subject || e.title || 'Sınav')}</strong>
                     <div style="font-size:.66rem;color:var(--muted);">${e.date}</div>
                   </div>
                   <div style="background:#3b82f6;color:#fff;font-size:.66rem;font-weight:900;padding:2px 7px;border-radius:20px;">
@@ -972,9 +1004,9 @@ function renderParentModalContent() {
           </div>
           <div style="display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;">
             ${todayLessons.length ? todayLessons.map(l => `
-              <div style="display:flex;justify-content:space-between;padding:5px 8px;border-radius:6px;background:${l.hour === curHour ? '#dcfce7' : '#f8faff'};font-size:.73rem;border:1px solid ${l.hour === curHour ? '#86efac' : 'var(--bdr)'};">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 9px;border-radius:6px;background:${l.hour === curHour ? '#dcfce7' : '#f8faff'};font-size:.73rem;border:1px solid ${l.hour === curHour ? '#86efac' : 'var(--bdr)'};">
                 <span style="font-weight:800;color:${l.hour === curHour ? '#166534' : 'inherit'};">${l.hour}:00 - ${l.hour+1}:00</span>
-                <span style="font-weight:700;">${escH(l.title)} ${l.hour === curHour ? '🟢' : ''}</span>
+                <span style="font-weight:700;">${l.emoji || '📖'} ${escH(l.title)} ${l.hour === curHour ? '🟢' : ''}</span>
               </div>
             `).join('') : '<div class="parent-list-empty">Bugün için özel plan girilmemiş.</div>'}
           </div>
@@ -1000,6 +1032,49 @@ function renderParentModalContent() {
               <div style="font-size:.62rem;font-weight:800;color:#1d4ed8;">Net</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Card 5: Student Activity History (Veli Kontrolü) -->
+      <div class="parent-card">
+        <div class="parent-card-h">
+          <span style="display:flex;align-items:center;gap:6px;">
+            <span>📜</span> <span>Öğrenci İşlem & Hareket Geçmişi</span>
+          </span>
+          <span class="parent-badge-count">${studentLogs.length} İşlem</span>
+        </div>
+        <div style="font-size:.72rem;color:var(--muted);font-weight:600;margin-bottom:4px;">
+          ${escH(s.name)} tarafından yapılan tüm giriş, ödev, sınav ve program hareketleri:
+        </div>
+        <div style="max-height:220px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;background:#f8faff;">
+          ${studentLogs.length ? `
+            <div style="display:flex;flex-direction:column;">
+              ${studentLogs.map((l, idx) => {
+                const meta = getLogActionMeta(l.action || l.type);
+                const desc = l.desc || l.detail || l.store || 'İşlem yapıldı';
+                const time = l.dateStr || (l.timestamp ? new Date(l.timestamp).toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '-');
+                return `
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-bottom:${idx === studentLogs.length - 1 ? 'none' : '1px solid #edf2f7'};gap:8px;">
+                    <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                      <span style="font-size:1rem;flex-shrink:0;">${meta.icon}</span>
+                      <div style="min-width:0;">
+                        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                          <span style="background:${meta.bg};color:${meta.color};font-size:.63rem;font-weight:900;padding:1px 6px;border-radius:4px;">${meta.label}</span>
+                          <span style="font-size:.75rem;font-weight:800;color:#1e293b;">${escH(desc)}</span>
+                        </div>
+                        ${l.details ? `<div style="font-size:.66rem;color:var(--muted);">${escH(l.details)}</div>` : ''}
+                      </div>
+                    </div>
+                    <div style="font-size:.66rem;color:var(--muted);font-weight:700;white-space:nowrap;">
+                      ${time}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : `
+            <div class="parent-list-empty">Bu öğrenciye ait henüz kayıtlı işlem geçmişi yok.</div>
+          `}
         </div>
       </div>
 

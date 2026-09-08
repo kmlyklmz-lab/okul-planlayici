@@ -198,6 +198,8 @@ function updateSchedTitle(){
 function clearSlot(hour){
   const sc=getSched(); if(!sc[_curDay]) return;
   sc[_curDay][hour]=null; saveSched(sc);
+  const d=DAYS[_curDay];
+  if (typeof AppDB !== 'undefined') AppDB.logActivity('PROGRAM_GUNCELLEME', `${d.name} ${hour}:00 saati temizlendi`);
   renderSchedule(); buildWeekNav(); updateStats(); updateBadges(); updateMotivation();
 }
 function renderSchedule(){
@@ -257,6 +259,9 @@ function saveSchedSlot(){
   const sc=getSched(); if(!sc[di]) sc[di]={};
   sc[di][hour]=_mCat?{cat:_mCat,note}:null;
   saveSched(sc); closeModal();
+  const d=DAYS[di];
+  const act=getActs().find(a=>a.id===_mCat);
+  if (typeof AppDB !== 'undefined') AppDB.logActivity('PROGRAM_GUNCELLEME', `${d.name} ${hour}:00 saatine "${act?act.label:'Aktivite'}" eklendi`, note ? `Not: ${note}` : '');
   renderSchedule(); buildWeekNav(); updateStats(); updateBadges(); updateMotivation();
 }
 

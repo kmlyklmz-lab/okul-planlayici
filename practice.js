@@ -134,18 +134,25 @@ function savePrItem(editId) {
   if(!total||total<1){showToast('❗ Toplam soru sayısını gir!','#ef4444');return;}
   if(correct>total){showToast('❗ Doğru sayısı toplam sorudan fazla olamaz!','#ef4444');return;}
   const pr=getPractice();
+  const sub=getSubjs().find(s=>s.id===subjectId);
+  const subName=sub?sub.name:'Ders';
+
   if(editId){
     const i=pr.findIndex(p=>p.id===editId);
     if(i!==-1) pr[i]={...pr[i],subjectId,topic,date,total,correct,note};
+    if (typeof AppDB !== 'undefined') AppDB.logActivity('CALISMA_KAYDI', `${subName} çalışması güncellendi (${total} soru: ${correct}D/${total-correct}Y)`, topic ? `Konu: ${topic}` : '');
   } else {
     pr.push({id:uid(),subjectId,topic,date,total,correct,note,createdAt:new Date().toISOString().slice(0,10)});
+    if (typeof AppDB !== 'undefined') AppDB.logActivity('CALISMA_KAYDI', `${subName} çalışması eklendi (${total} soru: ${correct}D/${total-correct}Y)`, topic ? `Konu: ${topic}` : '');
   }
   savePractice(pr); closeModal(); renderPractice();
   showToast(editId?'✅ Çalışma güncellendi!':'✅ Çalışma eklendi!','#10b981');
 }
 
 function delPr(id) {
+  const item = getPractice().find(p=>p.id===id);
   if(!confirm('Bu çalışma kaydını silmek istediğinden emin misin?')) return;
+  if (item && typeof AppDB !== 'undefined') AppDB.logActivity('CALISMA_SILME', `Çalışma kaydı silindi (${item.total} soru)`);
   savePractice(getPractice().filter(p=>p.id!==id)); renderPractice();
   showToast('🗑️ Çalışma silindi!','#64748b');
 }
