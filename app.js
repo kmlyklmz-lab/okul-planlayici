@@ -39,9 +39,56 @@ const QUOTES = [
 
 // ─── STATE ───────────────────────────────
 let CUR_ID = null;   // current student id
+let IS_PARENT_MODE = false; // true when logged in as parent/admin
+let _activeLoginRole = 'student'; // 'student' | 'parent'
 
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ─── SYNC STATUS FORMATTER ───────────────
+function formatSyncStatus(isoString) {
+  if (!isoString) {
+    return {
+      text: 'Veri bekleniyor',
+      badgeClass: 'sync-badge-warn',
+      isStale: false,
+      alertMsg: null
+    };
+  }
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) {
+    return { text: 'Geçersiz tarih', badgeClass: 'sync-badge-warn', isStale: false, alertMsg: null };
+  }
+  const now = new Date();
+  const diffMs = Math.max(0, now - d);
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 5) {
+    return { text: '🟢 Canlı Eşitlendi (Az önce)', badgeClass: 'sync-badge-ok', isStale: false, alertMsg: null };
+  } else if (diffHours < 24) {
+    const timeStr = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    return { text: `🟢 Bugün ${timeStr}`, badgeClass: 'sync-badge-ok', isStale: false, alertMsg: null };
+  } else if (diffDays === 1) {
+    const timeStr = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    return { text: `🟡 Dün ${timeStr}`, badgeClass: 'sync-badge-warn', isStale: false, alertMsg: null };
+  } else if (diffDays >= 2 && diffDays < 7) {
+    return {
+      text: `⚠️ ${diffDays} gün önce eşitlendi`,
+      badgeClass: 'sync-badge-warn',
+      isStale: true,
+      alertMsg: `⚠️ Tablet ${diffDays} gündür internete bağlanmamış olabilir. Değişikliklerin gelmesi için tableti internete bağlayınız.`
+    };
+  } else {
+    return {
+      text: `🚨 ${diffDays} gündür veri gelmedi!`,
+      badgeClass: 'sync-badge-alert',
+      isStale: true,
+      alertMsg: `🚨 Öğrencinin cihazından ${diffDays} gündür veri gelmedi! Lütfen tableti internete bağlayın.`
+    };
+  }
+}
 
 // ─── STUDENT DATA ────────────────────────
 function allStudents() { return JSON.parse(localStorage.getItem('oa_students')||'[]'); }
@@ -57,6 +104,7 @@ function getActs() { const s=curStudent(); return s?(s.activities&&s.activities.
 function saveActs(arr) { const s=curStudent();if(!s)return;s.activities=arr;updateStudent(s); }
 function curStudent() { return CUR_ID ? getStudent(CUR_ID) : null; }
 function updateStudent(upd) {
+  upd.lastModified = new Date().toISOString();
   const arr = allStudents();
   const i = arr.findIndex(s=>s.id===upd.id);
   if(i!==-1){ 
@@ -64,6 +112,9 @@ function updateStudent(upd) {
     saveStudents(arr); 
   }
   if (typeof SchoolAIBot !== 'undefined' && SchoolAIBot.updateStudentContext) SchoolAIBot.updateStudentContext();
+  if (IS_PARENT_MODE) {
+    renderParentAdminBanner();
+  }
 }
 function emptySchedule() {
   const s={};
@@ -77,25 +128,90 @@ function showScreen(name) {
   document.getElementById('scr-'+name).classList.add('active');
 }
 
-// ─── LOGIN ───────────────────────────────
+// ─── LOGIN & ROLES ───────────────────────
 let _selId = null;
+
+function switchLoginRole(role) {
+  _activeLoginRole = role;
+  const tabStu = document.getElementById('roleTabStudent');
+  const tabPar = document.getElementById('roleTabParent');
+  const viewStu = document.getElementById('loginStudentView');
+  const viewPar = document.getElementById('loginParentView');
+
+  if (role === 'parent') {
+    if (tabStu) tabStu.classList.remove('active');
+    if (tabPar) tabPar.classList.add('active');
+    if (viewStu) viewStu.style.display = 'none';
+    if (viewPar) viewPar.style.display = 'block';
+  } else {
+    if (tabStu) tabStu.classList.add('active');
+    if (tabPar) tabPar.classList.remove('active');
+    if (viewStu) viewStu.style.display = 'block';
+    if (viewPar) viewPar.style.display = 'none';
+  }
+  renderLoginScreen();
+}
 
 function renderLoginScreen() {
   const students = allStudents();
+
+  // 1. Render Student Grid (for student login)
   const grid = document.getElementById('studentGrid');
-  grid.innerHTML = students.length ? '' :
-    '<div style="color:rgba(255,255,255,.7);font-size:.83rem;font-weight:700;text-align:center;padding:18px;grid-column:1/-1;">Henüz öğrenci yok 👇</div>';
-  students.forEach(s=>{
-    const c=document.createElement('div');
-    c.className='s-card';
-    c.innerHTML=`<span class="sav">${s.avatar}</span><div class="snm">${escH(s.name)}</div><div class="sgr">${s.grade}. Sınıf</div>`;
-    c.onclick=()=>selectStudent(s.id,c);
-    grid.appendChild(c);
-  });
+  if (grid) {
+    grid.innerHTML = students.length ? '' :
+      '<div style="color:rgba(255,255,255,.7);font-size:.83rem;font-weight:700;text-align:center;padding:18px;grid-column:1/-1;">Henüz öğrenci yok 👇</div>';
+    students.forEach(s=>{
+      const c=document.createElement('div');
+      c.className='s-card';
+      c.innerHTML=`<span class="sav">${s.avatar}</span><div class="snm">${escH(s.name)}</div><div class="sgr">${s.grade}. Sınıf</div>`;
+      c.onclick=()=>selectStudent(s.id,c);
+      grid.appendChild(c);
+    });
+  }
   _selId=null;
-  document.getElementById('loginPwSection').classList.remove('show');
-  document.getElementById('loginPw').value='';
-  document.getElementById('loginErr').classList.remove('show');
+  const pwSec = document.getElementById('loginPwSection');
+  if (pwSec) pwSec.classList.remove('show');
+  const loginPwInp = document.getElementById('loginPw');
+  if (loginPwInp) loginPwInp.value='';
+  const loginErr = document.getElementById('loginErr');
+  if (loginErr) loginErr.classList.remove('show');
+
+  // 2. Render Parent Preview List (for parent login)
+  const parList = document.getElementById('parentStudentPreviewList');
+  if (parList) {
+    if (!students.length) {
+      parList.innerHTML = '<div style="color:rgba(255,255,255,.75);font-size:.82rem;font-weight:700;text-align:center;padding:16px;">Henüz kayıtlı öğrenci yok. Aşağıdan yeni öğrenci ekleyebilirsiniz.</div>';
+    } else {
+      parList.innerHTML = students.map(s => {
+        const syncInfo = formatSyncStatus(s.lastModified);
+        const pendingHw = (s.homework || []).filter(h => !h.completed).length;
+        const upcomingExams = (s.exams || []).filter(e => e.date && new Date(e.date) >= new Date(new Date().toDateString())).length;
+        return `
+          <div class="parent-stu-preview-item">
+            <span class="parent-stu-av">${s.avatar}</span>
+            <div class="parent-stu-info">
+              <div class="parent-stu-name">
+                <span>${escH(s.name)}</span>
+                <span class="parent-stu-grade">(${s.grade}. Sınıf)</span>
+              </div>
+              <div class="parent-stu-sync ${syncInfo.badgeClass}">
+                <span>${syncInfo.text}</span>
+              </div>
+              <div style="display:flex;gap:8px;font-size:.68rem;color:rgba(255,255,255,.8);font-weight:700;margin-top:3px;">
+                <span>📝 ${pendingHw} Bekleyen Ödev</span> · 
+                <span>📊 ${upcomingExams} Yaklaşan Sınav</span>
+              </div>
+              ${syncInfo.isStale && syncInfo.alertMsg ? `
+                <div style="background:rgba(239,68,68,.25);border:1px solid rgba(239,68,68,.5);border-radius:6px;padding:4px 6px;margin-top:4px;font-size:.66rem;color:#fee2e2;line-height:1.35;">
+                  ${syncInfo.alertMsg}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
 }
 
 function selectStudent(id, card) {
@@ -110,7 +226,9 @@ function selectStudent(id, card) {
   // Şifresi yoksa direkt giriş yap
   if(!s.password) {
     CUR_ID=id;
+    IS_PARENT_MODE = false;
     sessionStorage.setItem('oa_ses',id);
+    sessionStorage.setItem('oa_role','student');
     if (typeof AppDB !== 'undefined') AppDB.logActivity('GIRIS', `${s.name} giriş yaptı.`, `${s.grade}. Sınıf`, s.id);
     if (typeof SchoolAIBot !== 'undefined') SchoolAIBot.updateStudentContext();
     enterApp();
@@ -125,7 +243,10 @@ function doLogin() {
   const s=getStudent(_selId);
   // Şifresi yoksa direkt gir
   if(!s.password) {
-    CUR_ID=_selId; sessionStorage.setItem('oa_ses',_selId); 
+    CUR_ID=_selId; 
+    IS_PARENT_MODE = false;
+    sessionStorage.setItem('oa_ses',_selId); 
+    sessionStorage.setItem('oa_role','student');
     if (typeof AppDB !== 'undefined') AppDB.logActivity('GIRIS', `${s.name} giriş yaptı.`, `${s.grade}. Sınıf`, s.id);
     if (typeof SchoolAIBot !== 'undefined') SchoolAIBot.updateStudentContext();
     enterApp(); 
@@ -137,16 +258,56 @@ function doLogin() {
     return;
   }
   CUR_ID=_selId;
+  IS_PARENT_MODE = false;
   sessionStorage.setItem('oa_ses',_selId);
+  sessionStorage.setItem('oa_role','student');
   if (typeof AppDB !== 'undefined') AppDB.logActivity('GIRIS', `${s.name} giriş yaptı.`, `${s.grade}. Sınıf`, s.id);
   if (typeof SchoolAIBot !== 'undefined') SchoolAIBot.updateStudentContext();
   enterApp();
 }
 
+function doParentLogin() {
+  const students = allStudents();
+  if (!students.length) {
+    showToast('⚠️ Önce bir öğrenci kaydı oluşturmalısınız!', '#f59e0b');
+    showScreen('register');
+    return;
+  }
+
+  const enteredPw = document.getElementById('parentPw')?.value || '';
+  const savedParentPw = localStorage.getItem('oa_parent_pw') || '';
+  const errEl = document.getElementById('parentLoginErr');
+
+  if (savedParentPw && enteredPw !== savedParentPw) {
+    if (errEl) errEl.classList.add('show');
+    return;
+  }
+  if (errEl) errEl.classList.remove('show');
+
+  IS_PARENT_MODE = true;
+  sessionStorage.setItem('oa_role', 'parent');
+  CUR_ID = students[0].id;
+  sessionStorage.setItem('oa_ses', CUR_ID);
+
+  if (typeof AppDB !== 'undefined') AppDB.logActivity('VELI_GIRIS', 'Veli Yönetici Paneline giriş yapıldı.', 'Tüm Öğrenciler Yönetimi');
+  enterApp();
+}
+
+function parentSwitchStudent(studentId) {
+  if (!studentId) return;
+  CUR_ID = studentId;
+  sessionStorage.setItem('oa_ses', studentId);
+  enterApp();
+  showToast(`👤 ${curStudent()?.name} öğrencisine geçildi`, '#6366f1');
+}
+
 function doLogout() {
   const s = curStudent();
-  if (s && typeof AppDB !== 'undefined') AppDB.logActivity('CIKIS', `${s.name} çıkış yaptı.`, '', s.id);
-  CUR_ID=null; sessionStorage.removeItem('oa_ses');
+  if (s && typeof AppDB !== 'undefined') AppDB.logActivity('CIKIS', `${IS_PARENT_MODE ? 'Veli' : s.name} çıkış yaptı.`, '', s.id);
+  CUR_ID=null; 
+  IS_PARENT_MODE = false;
+  sessionStorage.removeItem('oa_ses');
+  sessionStorage.removeItem('oa_role');
   if (typeof SchoolAIBot !== 'undefined') SchoolAIBot.updateStudentContext();
   renderLoginScreen(); showScreen('login');
 }
@@ -181,7 +342,24 @@ function doRegister() {
   const students=allStudents();
   if(students.find(s=>s.name.toLowerCase()===name.toLowerCase())){showErr('❗ Bu isimde öğrenci var!');return;}
   const subjects=DEFAULT_SUBJECTS.map(s=>({id:uid(),name:s.name,emoji:s.emoji,color:s.color,teacher:''}));
-  const newStudent = {id:uid(),name,avatar:_regAv,grade,password:pw||'',subjects,schedule:emptySchedule(),homework:[],exams:[],notes:[],practice:[],activities:[...DEFAULT_ACTIVITIES],schDays:[1,2,3,4,5],schStart:'08:00',schEnd:'14:00'};
+  const newStudent = {
+    id:uid(),
+    name,
+    avatar:_regAv,
+    grade,
+    password:pw||'',
+    subjects,
+    schedule:emptySchedule(),
+    homework:[],
+    exams:[],
+    notes:[],
+    practice:[],
+    activities:[...DEFAULT_ACTIVITIES],
+    schDays:[1,2,3,4,5],
+    schStart:'08:00',
+    schEnd:'14:00',
+    lastModified: new Date().toISOString()
+  };
   students.push(newStudent);
   saveStudents(students);
   if (typeof AppDB !== 'undefined') AppDB.logActivity('OGRENCI_EKLEME', `${name} (${grade}. Sınıf) kaydedildi.`, `${subjects.length} Ders`);
@@ -189,14 +367,60 @@ function doRegister() {
   document.getElementById('regPw').value='';
   document.getElementById('regPw2').value='';
   showToast('🎉 '+name+' kaydedildi!','#10b981');
-  renderLoginScreen(); showScreen('login');
+  
+  if (IS_PARENT_MODE) {
+    CUR_ID = newStudent.id;
+    sessionStorage.setItem('oa_ses', CUR_ID);
+    enterApp();
+  } else {
+    renderLoginScreen(); showScreen('login');
+  }
 }
 
 // ─── APP ENTRY ───────────────────────────
 function enterApp() {
-  const s=curStudent(); if(!s) return;
-  document.getElementById('ahAvatar').textContent=s.avatar;
-  document.getElementById('ahName').textContent=s.name;
+  const students = allStudents();
+  if (!students.length) {
+    showScreen('login');
+    return;
+  }
+
+  if (!CUR_ID || !getStudent(CUR_ID)) {
+    CUR_ID = students[0].id;
+  }
+
+  const s = curStudent();
+  if (!s) return;
+
+  const childSelect = document.getElementById('parentChildSelect');
+  const parentBanner = document.getElementById('parentAdminBanner');
+  const logoutBtn = document.getElementById('btnLogout');
+
+  if (IS_PARENT_MODE) {
+    // Populate parent child select dropdown in header
+    if (childSelect) {
+      childSelect.style.display = 'inline-block';
+      childSelect.innerHTML = students.map(st => `
+        <option value="${st.id}" ${st.id === s.id ? 'selected' : ''}>
+          ${st.avatar} ${escH(st.name)} (${st.grade}. Sınıf)
+        </option>
+      `).join('');
+    }
+
+    if (logoutBtn) {
+      logoutBtn.textContent = '🚪 Veli Çıkışı';
+    }
+
+    renderParentAdminBanner();
+  } else {
+    if (childSelect) childSelect.style.display = 'none';
+    if (parentBanner) parentBanner.style.display = 'none';
+    if (logoutBtn) logoutBtn.textContent = 'Çıkış';
+  }
+
+  document.getElementById('ahAvatar').textContent = s.avatar;
+  document.getElementById('ahName').textContent = IS_PARENT_MODE ? `${s.name} (Veli Modu)` : s.name;
+
   if (typeof SchoolAIBot !== 'undefined') SchoolAIBot.updateStudentContext();
   initScheduleTab();
   renderSubjects();
@@ -207,6 +431,29 @@ function enterApp() {
   updateHwBadge();
   switchTab('schedule', document.querySelector('[data-tab="schedule"]'));
   showScreen('app');
+}
+
+function renderParentAdminBanner() {
+  const parentBanner = document.getElementById('parentAdminBanner');
+  if (!parentBanner || !IS_PARENT_MODE) return;
+  const s = curStudent();
+  if (!s) return;
+  const syncInfo = formatSyncStatus(s.lastModified);
+
+  parentBanner.style.display = 'flex';
+  parentBanner.innerHTML = `
+    <div class="parent-admin-banner-left">
+      <span class="parent-admin-banner-badge">👨‍👩‍👧 Veli Yönetici Modu</span>
+      <span>Yönetilen Öğrenci: <strong>${s.avatar} ${escH(s.name)} (${s.grade}. Sınıf)</strong></span>
+      <span style="opacity:.85;">·</span>
+      <span class="${syncInfo.badgeClass}" style="font-weight:800;">📡 ${syncInfo.text}</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      ${syncInfo.isStale ? `<span style="background:#fee2e2;color:#991b1b;padding:2px 7px;border-radius:4px;font-size:.68rem;font-weight:800;">⚠️ Tablet Bağlantısı Gerekebilir</span>` : ''}
+      <button class="btn-sm" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);" onclick="openParentModal('${s.id}')">📊 Veli Özeti & WhatsApp</button>
+      <button class="btn-sm" style="background:#10b981;color:#fff;border:none;" onclick="showScreen('register')">➕ Öğrenci Ekle</button>
+    </div>
+  `;
 }
 
 // ─── TABS ────────────────────────────────
@@ -965,6 +1212,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   renderAvatarPicker();
   renderLoginScreen();
+  
+  const role = sessionStorage.getItem('oa_role');
+  if (role === 'parent') {
+    IS_PARENT_MODE = true;
+  }
+
   const ses = sessionStorage.getItem('oa_ses');
   if (ses && getStudent(ses)) { 
     CUR_ID = ses; 

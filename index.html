@@ -25,30 +25,55 @@
 <!-- ── LOGIN ── -->
 <div id="scr-login" class="screen active">
   <div class="login-wrap">
-    <div class="login-logo"><span class="logo-icon">🎒</span><h1>Okul Asistanım</h1><p>Profilini seç ve başla!</p></div>
+    <div class="login-logo"><span class="logo-icon">🎒</span><h1>Okul Asistanım</h1><p>Giriş türünü seç ve başla!</p></div>
 
-    <!-- Data safety notice -->
-    <div class="data-notice">
-      <span>☁️</span>
-      <div>
-        <strong>Google Firebase NoSQL & Canlı Eşitleme Aktif</strong>
-        Öğrenci ve veli tüm cihazlardan anlık bağlanır, veriler kaybolmaz.
-      </div>
-      <div style="display:flex;gap:6px;margin-left:auto;flex-wrap:wrap;">
-        <button class="notice-imp" onclick="openParentModal()" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);border-color:#a78bfa;">👨‍👩‍👧 Veli Paneli</button>
-        <button class="notice-imp" onclick="openDatabaseModal('cloud')">🔥 Firebase DB</button>
-      </div>
-    </div>
     <div class="glass-card">
-      <h2 class="card-label">👤 Öğrenci Seç</h2>
-      <div id="studentGrid" class="student-grid"></div>
-      <div id="loginPwSection" class="pw-section">
-        <div class="selected-info"><span id="selAvatar"></span><span id="selName"></span></div>
-        <div class="pw-wrap"><input id="loginPw" type="password" placeholder="Şifreni gir…" onkeydown="if(event.key==='Enter')doLogin()"/><span class="pw-eye" onclick="togglePw('loginPw',this)">👁️</span></div>
-        <div id="loginErr" class="err-msg">❌ Şifre yanlış!</div>
-        <button class="btn-login" onclick="doLogin()">🚀 Giriş Yap</button>
+      <!-- Role Switcher -->
+      <div class="role-tabs">
+        <button id="roleTabStudent" class="role-tab active" onclick="switchLoginRole('student')">🧑‍🎓 Öğrenci Girişi</button>
+        <button id="roleTabParent" class="role-tab" onclick="switchLoginRole('parent')">👨‍👩‍👧 Veli Paneli & Yönetim</button>
       </div>
-      <button class="btn-new-student" onclick="showScreen('register')">➕ Yeni Öğrenci Oluştur</button>
+
+      <!-- STUDENT LOGIN VIEW -->
+      <div id="loginStudentView">
+        <h2 class="card-label">👤 Öğrenci Seç</h2>
+        <div id="studentGrid" class="student-grid"></div>
+        <div id="loginPwSection" class="pw-section">
+          <div class="selected-info"><span id="selAvatar"></span><span id="selName"></span></div>
+          <div class="pw-wrap"><input id="loginPw" type="password" placeholder="Şifreni gir…" onkeydown="if(event.key==='Enter')doLogin()"/><span class="pw-eye" onclick="togglePw('loginPw',this)">👁️</span></div>
+          <div id="loginErr" class="err-msg">❌ Şifre yanlış!</div>
+          <button class="btn-login" onclick="doLogin()">🚀 Giriş Yap</button>
+        </div>
+        <button class="btn-new-student" onclick="showScreen('register')">➕ Yeni Öğrenci Oluştur</button>
+      </div>
+
+      <!-- PARENT LOGIN VIEW -->
+      <div id="loginParentView" style="display:none;">
+        <h2 class="card-label" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>👨‍👩‍👧 Kayıtlı Öğrenciler & Durum</span>
+          <span style="font-size:.7rem;opacity:.8;font-weight:600;">Firebase Canlı Eşitleme</span>
+        </h2>
+        <div id="parentStudentPreviewList" class="parent-stu-preview-list"></div>
+        
+        <div id="parentPwSection" style="margin-top:10px;">
+          <label class="fl" style="margin-top:0;">Veli Şifresi <span style="font-weight:600;opacity:.65;font-size:.7rem">(isteğe bağlı)</span></label>
+          <div class="pw-wrap">
+            <input id="parentPw" type="password" class="field" placeholder="Varsayılan: Şifresiz giriş" onkeydown="if(event.key==='Enter')doParentLogin()"/>
+            <span class="pw-eye" onclick="togglePw('parentPw',this)">👁️</span>
+          </div>
+          <div id="parentLoginErr" class="err-msg">❌ Veli şifresi yanlış!</div>
+        </div>
+
+        <button class="btn-login" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;" onclick="doParentLogin()">
+          🚀 Veli Yönetim Paneline Giriş Yap
+        </button>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+          <button class="btn-new-student" style="margin-top:0;" onclick="showScreen('register')">➕ Yeni Öğrenci</button>
+          <button class="btn-new-student" style="margin-top:0;" onclick="CloudDB.pullFromCloud().then(()=>renderLoginScreen())">🔄 Şimdi Eşitle</button>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -84,17 +109,22 @@
   <header class="app-header">
     <div class="ah-logo">🎒 Okul Asistanım</div>
     <div class="ah-right">
-      <button class="btn-parent-header" onclick="openParentModal()" title="Veli Canlı Takip Paneli">👨‍👩‍👧 <span>Veli Paneli</span></button>
+      <!-- Child switcher dropdown when in Parent Admin mode -->
+      <select id="parentChildSelect" class="parent-header-select" style="display:none;" onchange="parentSwitchStudent(this.value)" title="Yönetilen Öğrenciyi Değiştir"></select>
+      <button id="btnParentReport" class="btn-parent-header" onclick="openParentModal()" title="Veli Canlı Takip Paneli">👨‍👩‍👧 <span>Veli Raporu</span></button>
       <button class="btn-db-header" onclick="openDatabaseModal('cloud')" title="Firebase Bulut & Veritabanı">🔥 <span>Firebase DB</span></button>
-      <button class="pp-trigger" onclick="openProfile()">
+      <button id="btnProfileTrigger" class="pp-trigger" onclick="openProfile()">
         <span id="ahAvatar" class="ah-av"></span>
         <span id="ahName" class="ah-name"></span>
         <span class="pp-arrow">▾</span>
       </button>
       <button class="btn-backup" onclick="exportData()" title="Tüm verileri yedekle">💾 Yedek Al</button>
-      <button class="btn-logout" onclick="doLogout()">Çıkış</button>
+      <button id="btnLogout" class="btn-logout" onclick="doLogout()">Çıkış</button>
     </div>
   </header>
+
+  <!-- Parent Admin Status Banner (shown only when IS_PARENT_MODE = true) -->
+  <div id="parentAdminBanner" class="parent-admin-banner" style="display:none;"></div>
 
   <div class="tab-area">
 

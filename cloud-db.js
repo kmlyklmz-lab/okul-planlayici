@@ -112,6 +112,9 @@ const CloudDB = {
                 if (typeof renderPractice === 'function') renderPractice();
                 if (typeof renderScheduleGrid === 'function') renderScheduleGrid();
                 if (typeof renderProfilePanel === 'function') renderProfilePanel();
+                if (typeof IS_PARENT_MODE !== 'undefined' && IS_PARENT_MODE && typeof renderParentAdminBanner === 'function') {
+                    renderParentAdminBanner();
+                }
             }
 
             // Update parent view if active
