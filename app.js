@@ -125,7 +125,12 @@ function emptySchedule() {
 // ─── SCREEN ──────────────────────────────
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active'));
-  document.getElementById('scr-'+name).classList.add('active');
+  const target = document.getElementById('scr-'+name);
+  if (target) target.classList.add('active');
+  const aiFab = document.querySelector('.ai-bot-fab');
+  const aiDrawer = document.querySelector('.ai-bot-drawer');
+  if (aiFab) aiFab.style.display = (name === 'app') ? 'flex' : 'none';
+  if (aiDrawer && name !== 'app') aiDrawer.classList.remove('open');
 }
 
 // ─── LOGIN & ROLES ───────────────────────
@@ -212,6 +217,63 @@ function renderLoginScreen() {
       }).join('');
     }
   }
+
+  // 3. Render Parent Auth Section (Passwordless or with Password)
+  const parAuth = document.getElementById('parentAuthContainer');
+  if (parAuth) {
+    const parentPw = localStorage.getItem('oa_parent_pw') || '';
+    if (!parentPw) {
+      parAuth.innerHTML = `
+        <div style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);border-radius:14px;padding:14px;margin-top:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:.76rem;color:#86efac;font-weight:800;display:flex;align-items:center;gap:4px;">
+              <span>🔓</span> <span>Şifresiz Giriş Modu (Varsayılan)</span>
+            </span>
+            <button type="button" class="btn-sm" style="background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.35);color:#fff;font-size:.72rem;padding:4px 9px;cursor:pointer;border-radius:7px;" onclick="toggleParentCreatePwBox()">
+              🔐 Şifre Belirle
+            </button>
+          </div>
+
+          <button class="btn-login" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;margin-top:0;" onclick="doParentLogin()">
+            🚀 Veli Yönetim Paneline Giriş Yap
+          </button>
+
+          <!-- Optional Password Creation Box -->
+          <div id="parentCreatePwBox" style="display:none;margin-top:12px;padding-top:12px;border-top:1px dashed rgba(255,255,255,0.25);">
+            <label class="fl" style="margin-top:0;">Yeni Veli Şifresi Belirle</label>
+            <div class="pw-wrap">
+              <input id="newParentPw" type="password" class="field" placeholder="En az 3 karakter girin..." onkeydown="if(event.key==='Enter')doCreateParentPwAndLogin()"/>
+              <span class="pw-eye" onclick="togglePw('newParentPw',this)">👁️</span>
+            </div>
+            <div id="parentCreatePwErr" class="err-msg"></div>
+            <button class="btn-login" style="background:#10b981;color:#fff;margin-top:6px;padding:9px;" onclick="doCreateParentPwAndLogin()">
+              ✅ Şifreyi Kaydet ve Giriş Yap
+            </button>
+          </div>
+        </div>
+      `;
+    } else {
+      parAuth.innerHTML = `
+        <div style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);border-radius:14px;padding:14px;margin-top:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-size:.76rem;color:#fde047;font-weight:800;display:flex;align-items:center;gap:4px;">
+              <span>🔒</span> <span>Veli Şifresi ile Korumalı</span>
+            </span>
+          </div>
+          <label class="fl" style="margin-top:0;">Veli Şifresi</label>
+          <div class="pw-wrap">
+            <input id="parentPw" type="password" class="field" placeholder="Veli şifrenizi girin..." onkeydown="if(event.key==='Enter')doParentLogin()"/>
+            <span class="pw-eye" onclick="togglePw('parentPw',this)">👁️</span>
+          </div>
+          <div id="parentLoginErr" class="err-msg">❌ Veli şifresi yanlış!</div>
+
+          <button class="btn-login" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;margin-top:8px;" onclick="doParentLogin()">
+            🚀 Veli Yönetim Paneline Giriş Yap
+          </button>
+        </div>
+      `;
+    }
+  }
 }
 
 function selectStudent(id, card) {
@@ -274,15 +336,16 @@ function doParentLogin() {
     return;
   }
 
-  const enteredPw = document.getElementById('parentPw')?.value || '';
   const savedParentPw = localStorage.getItem('oa_parent_pw') || '';
-  const errEl = document.getElementById('parentLoginErr');
-
-  if (savedParentPw && enteredPw !== savedParentPw) {
-    if (errEl) errEl.classList.add('show');
-    return;
+  if (savedParentPw) {
+    const enteredPw = document.getElementById('parentPw')?.value || '';
+    const errEl = document.getElementById('parentLoginErr');
+    if (enteredPw !== savedParentPw) {
+      if (errEl) errEl.classList.add('show');
+      return;
+    }
+    if (errEl) errEl.classList.remove('show');
   }
-  if (errEl) errEl.classList.remove('show');
 
   IS_PARENT_MODE = true;
   sessionStorage.setItem('oa_role', 'parent');
@@ -291,6 +354,31 @@ function doParentLogin() {
 
   if (typeof AppDB !== 'undefined') AppDB.logActivity('VELI_GIRIS', 'Veli Yönetici Paneline giriş yapıldı.', 'Tüm Öğrenciler Yönetimi');
   enterApp();
+}
+
+function doCreateParentPwAndLogin() {
+  const pw = document.getElementById('newParentPw')?.value || '';
+  const errEl = document.getElementById('parentCreatePwErr');
+  if (!pw || pw.length < 3) {
+    if (errEl) {
+      errEl.textContent = '❗ Şifre en az 3 karakter olmalıdır!';
+      errEl.classList.add('show');
+    }
+    return;
+  }
+  localStorage.setItem('oa_parent_pw', pw);
+  showToast('🔐 Veli şifresi başarıyla oluşturuldu!', '#10b981');
+  doParentLogin();
+}
+
+function toggleParentCreatePwBox() {
+  const box = document.getElementById('parentCreatePwBox');
+  if (box) {
+    box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
+    if (box.style.display === 'block') {
+      setTimeout(() => document.getElementById('newParentPw')?.focus(), 100);
+    }
+  }
 }
 
 function parentSwitchStudent(studentId) {
@@ -506,9 +594,9 @@ function closeProfile() {
 
 function renderProfilePanel() {
   const s = curStudent(); if(!s) return;
-  document.getElementById('ppAvatar').textContent = s.avatar;
-  document.getElementById('ppName').textContent   = s.name;
-  document.getElementById('ppGrade').textContent  = s.grade + '. Sınıf';
+  document.getElementById('ppAvatar').textContent = IS_PARENT_MODE ? '👨‍👩‍👧' : s.avatar;
+  document.getElementById('ppName').textContent   = IS_PARENT_MODE ? `Veli Yönetim Hesabı` : s.name;
+  document.getElementById('ppGrade').textContent  = IS_PARENT_MODE ? `Öğrenci: ${s.name} (${s.grade}. Sınıf)` : s.grade + '. Sınıf';
   renderDaySummary(s);
   renderRecommendations(s);
   renderPwSection(s);
@@ -629,6 +717,29 @@ function renderRecommendations(s) {
 // ── Şifre Bölümü ─────────────────────────
 function renderPwSection(s) {
   const el = document.getElementById('ppPwSection'); if(!el) return;
+
+  if (IS_PARENT_MODE) {
+    const parentPw = localStorage.getItem('oa_parent_pw') || '';
+    if (parentPw) {
+      el.innerHTML = `
+        <div class="pp-pw-info" style="color:#1e3a8a;font-weight:700;">🔒 Veli yönetim paneli şifre korumalıdır.</div>
+        <div class="mfg"><label>Mevcut Veli Şifresi</label><div class="pw-wrap"><input id="ppCurPw" type="password" class="pp-field" placeholder="Mevcut veli şifresi"/><span class="pw-eye" onclick="togglePw('ppCurPw',this)">👁️</span></div></div>
+        <div class="mfg"><label>Yeni Veli Şifresi</label><div class="pw-wrap"><input id="ppNewPw" type="password" class="pp-field" placeholder="Yeni şifre (en az 3 karakter)"/><span class="pw-eye" onclick="togglePw('ppNewPw',this)">👁️</span></div></div>
+        <div id="ppPwErr" class="err-msg" style="color:#ef4444;font-size:.75rem;margin-bottom:6px;display:none"></div>
+        <div style="display:flex;gap:8px">
+          <button class="pp-btn-save" onclick="changeParentPassword()">✅ Şifreyi Değiştir</button>
+          <button class="pp-btn-del" onclick="removeParentPassword()">🔓 Şifresiz Yap</button>
+        </div>`;
+    } else {
+      el.innerHTML = `
+        <div class="pp-pw-info" style="color:#166534;font-weight:700;">🔓 Veli paneli şu an şifresizdir (Herkes girebilir).</div>
+        <div class="mfg"><label>Yeni Veli Şifresi Belirle</label><div class="pw-wrap"><input id="ppNewPw" type="password" class="pp-field" placeholder="Veli şifresi belirle (en az 3 karakter)"/><span class="pw-eye" onclick="togglePw('ppNewPw',this)">👁️</span></div></div>
+        <div id="ppPwErr" class="err-msg" style="color:#ef4444;font-size:.75rem;margin-bottom:6px;display:none"></div>
+        <button class="pp-btn-save" onclick="addParentPassword()">🔐 Veli Şifresi Koy</button>`;
+    }
+    return;
+  }
+
   const hasPw = !!s.password;
   if(hasPw) {
     el.innerHTML = `
@@ -674,6 +785,57 @@ function removePassword() {
   s.password=''; updateStudent(s);
   showToast('🔓 Şifre kaldırıldı!','#f59e0b');
   renderPwSection(s);
+}
+
+function addPassword() {
+  const s=curStudent(); if(!s) return;
+  const nw=document.getElementById('ppNewPw')?.value;
+  const errEl=document.getElementById('ppPwErr');
+  if(!nw||nw.length<3){errEl.textContent='❗ Şifre en az 3 karakter olmalı!';errEl.style.display='block';return;}
+  s.password=nw; updateStudent(s);
+  showToast('🔐 Şifre eklendi!','#10b981');
+  renderPwSection(s);
+}
+
+function changeParentPassword() {
+  const cur = document.getElementById('ppCurPw')?.value;
+  const nw = document.getElementById('ppNewPw')?.value;
+  const errEl = document.getElementById('ppPwErr');
+  const saved = localStorage.getItem('oa_parent_pw') || '';
+  const showE = m => { errEl.textContent = m; errEl.style.display = 'block'; };
+  errEl.style.display = 'none';
+
+  if (cur !== saved) { showE('❗ Mevcut veli şifresi yanlış!'); return; }
+  if (!nw || nw.length < 3) { showE('❗ Yeni şifre en az 3 karakter olmalı!'); return; }
+  localStorage.setItem('oa_parent_pw', nw);
+  showToast('✅ Veli şifresi güncellendi!', '#10b981');
+  renderPwSection(curStudent());
+}
+
+function removeParentPassword() {
+  const cur = document.getElementById('ppCurPw')?.value;
+  const saved = localStorage.getItem('oa_parent_pw') || '';
+  if (cur !== saved) {
+    const errEl = document.getElementById('ppPwErr');
+    if (errEl) { errEl.textContent = '❗ Mevcut veli şifresi yanlış!'; errEl.style.display = 'block'; }
+    return;
+  }
+  if (!confirm('Veli şifresini kaldırmak istediğinize emin misiniz?\nVeli paneline şifresiz giriş yapılabilecek.')) return;
+  localStorage.removeItem('oa_parent_pw');
+  showToast('🔓 Veli şifresi kaldırıldı (Şifresiz mod)!', '#f59e0b');
+  renderPwSection(curStudent());
+}
+
+function addParentPassword() {
+  const nw = document.getElementById('ppNewPw')?.value;
+  const errEl = document.getElementById('ppPwErr');
+  if (!nw || nw.length < 3) {
+    if (errEl) { errEl.textContent = '❗ Şifre en az 3 karakter olmalı!'; errEl.style.display = 'block'; }
+    return;
+  }
+  localStorage.setItem('oa_parent_pw', nw);
+  showToast('🔐 Veli şifresi belirlendi!', '#10b981');
+  renderPwSection(curStudent());
 }
 
 function addPassword() {

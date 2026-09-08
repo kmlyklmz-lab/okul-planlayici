@@ -55,20 +55,9 @@
         </h2>
         <div id="parentStudentPreviewList" class="parent-stu-preview-list"></div>
         
-        <div id="parentPwSection" style="margin-top:10px;">
-          <label class="fl" style="margin-top:0;">Veli Şifresi <span style="font-weight:600;opacity:.65;font-size:.7rem">(isteğe bağlı)</span></label>
-          <div class="pw-wrap">
-            <input id="parentPw" type="password" class="field" placeholder="Varsayılan: Şifresiz giriş" onkeydown="if(event.key==='Enter')doParentLogin()"/>
-            <span class="pw-eye" onclick="togglePw('parentPw',this)">👁️</span>
-          </div>
-          <div id="parentLoginErr" class="err-msg">❌ Veli şifresi yanlış!</div>
-        </div>
+        <div id="parentAuthContainer"></div>
 
-        <button class="btn-login" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;" onclick="doParentLogin()">
-          🚀 Veli Yönetim Paneline Giriş Yap
-        </button>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
           <button class="btn-new-student" style="margin-top:0;" onclick="showScreen('register')">➕ Yeni Öğrenci</button>
           <button class="btn-new-student" style="margin-top:0;" onclick="CloudDB.pullFromCloud().then(()=>renderLoginScreen())">🔄 Şimdi Eşitle</button>
         </div>

@@ -70,6 +70,8 @@ const SchoolAIBot = {
                 </div>
                 <span class="ai-fab-badge">AI</span>
             `;
+            const isAppActive = document.getElementById('scr-app')?.classList.contains('active');
+            fab.style.display = isAppActive ? 'flex' : 'none';
             document.body.appendChild(fab);
         }
     },
