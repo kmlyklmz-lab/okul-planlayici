@@ -925,8 +925,11 @@ async function renderParentModalContent() {
 
       <!-- Quick Action Bar -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <button class="btn-login" style="margin-top:0;flex:1;min-width:180px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;font-size:.76rem;padding:9px;" onclick="copyParentSummaryReport('${s.id}')">
-          📲 WhatsApp Özet Raporunu Kopyala
+        <button class="btn-login" style="margin-top:0;flex:1;min-width:180px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:.76rem;padding:9px;" onclick="ParentDailyReporter.sendDailyReport('manual','${s.id}')">
+          📧 20:30 Günlük E-Posta Raporu Gönder
+        </button>
+        <button class="btn-login" style="margin-top:0;flex:1;min-width:160px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;font-size:.76rem;padding:9px;" onclick="copyParentSummaryReport('${s.id}')">
+          📲 WhatsApp / Pano Kopyala
         </button>
         <button class="notice-imp" style="margin-left:0;padding:8px 12px;background:#f8faff;border-color:var(--bdr);color:var(--txt);" onclick="CloudDB.pullFromCloud().then(()=>renderParentModalContent())">
           🔄 Canlı Yenile
@@ -1093,49 +1096,196 @@ async function renderParentModalContent() {
   openModal('👨‍👩‍👧 Veli Canlı Takip Paneli', html);
 }
 
+// ─── PARENT DAILY 20:30 REPORT & EMAIL SERVICE ─────────────────────
+const ParentDailyReporter = {
+  checkTimer: null,
+
+  init() {
+    if (this.checkTimer) clearInterval(this.checkTimer);
+    // Check every 25 seconds for 20:30 schedule
+    this.checkTimer = setInterval(() => this.checkSchedule(), 25000);
+    this.checkSchedule();
+  },
+
+  getParentEmail() {
+    return localStorage.getItem('oa_parent_email') || 'veli@ornek.com';
+  },
+
+  setParentEmail(email) {
+    if (email && email.trim()) {
+      localStorage.setItem('oa_parent_email', email.trim());
+    }
+  },
+
+  checkSchedule() {
+    const now = new Date();
+    const curHour = now.getHours();
+    const curMin = now.getMinutes();
+    const todayKey = now.toISOString().slice(0, 10);
+
+    // If time is >= 20:30 and report not sent today
+    if (curHour >= 20 && (curHour > 20 || curMin >= 30)) {
+      const lastSent = localStorage.getItem('oa_last_parent_report_date');
+      if (lastSent !== todayKey) {
+        localStorage.setItem('oa_last_parent_report_date', todayKey);
+        this.sendDailyReport('auto');
+      }
+    }
+  },
+
+  generateAllStudentsReport() {
+    const students = allStudents();
+    const now = new Date();
+    const dayNames = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+    const todayName = dayNames[now.getDay()];
+    const dateStr = now.toLocaleDateString('tr-TR');
+
+    let textReport = `🎒 OKUL ASİSTANİM - GÜNLÜK VELİ VE REHBERLİK BÜLTENİ\n`;
+    textReport += `📅 Tarih: ${dateStr} ${todayName} (Saat: 20:30 Bülteni)\n`;
+    textReport += `====================================================\n\n`;
+
+    let htmlReport = `
+      <div style="font-family:'Nunito',sans-serif;color:#1e293b;line-height:1.5;">
+        <div style="background:linear-gradient(135deg,#1e1b4b,#4338ca);color:#fff;padding:14px;border-radius:12px;margin-bottom:14px;">
+          <h2 style="margin:0 0 4px 0;font-size:1.1rem;font-weight:900;">🎒 Okul Asistanım - 20:30 Günlük Veli Bülteni</h2>
+          <div style="font-size:.76rem;opacity:.9;">📅 ${dateStr} ${todayName} · Tüm Öğrencilerin Gün Sonu Analizi</div>
+        </div>
+    `;
+
+    if (!students.length) {
+      textReport += `Kayıtlı öğrenci bulunamadı.\n`;
+      htmlReport += `<p>Kayıtlı öğrenci bulunamadı.</p></div>`;
+      return { text: textReport, html: htmlReport, studentsCount: 0 };
+    }
+
+    students.forEach((s, idx) => {
+      const sch = (s.weeklySchedules && s.weeklySchedules[getWeekKey(getMonday(now))]) || s.schedule || {};
+      const todaySch = sch[now.getDay()] || {};
+      const hw = s.homework || [];
+      const pendingHw = hw.filter(h => !h.completed && !h.done);
+      const doneHw = hw.filter(h => h.completed || h.done);
+      const exams = s.exams || [];
+      const upcomingExams = exams.filter(e => e.date && new Date(e.date) >= new Date(now.toDateString()));
+      const practice = s.practice || [];
+      const todayDateStr = now.toISOString().slice(0, 10);
+      const todayPr = practice.filter(p => p.date === todayDateStr || p.createdAt === todayDateStr);
+      const totalQToday = todayPr.reduce((sum, p) => sum + (Number(p.total) || 0), 0);
+      const correctToday = todayPr.reduce((sum, p) => sum + (Number(p.correct) || 0), 0);
+
+      // Schedule hours count
+      const activeHours = Object.keys(todaySch).filter(h => todaySch[h] && (todaySch[h].cat || todaySch[h].actId));
+
+      textReport += `👤 ÖĞRENCİ ${idx + 1}: ${s.name} (${s.grade}. Sınıf)\n`;
+      textReport += `----------------------------------------------------\n`;
+      textReport += `🗓️ Bugün Tamamlanan Plan: ${activeHours.length} saat aktivite/ders\n`;
+      textReport += `📝 Ödevler: ${doneHw.length} tamamlandı, ${pendingHw.length} bekleyen\n`;
+      if (pendingHw.length > 0) {
+        pendingHw.forEach(h => {
+          textReport += `   - [ ] ${h.title} (Son: ${h.dueDate || h.due || 'Belirtilmedi'})\n`;
+        });
+      }
+      if (totalQToday > 0) {
+        textReport += `🔢 Bugün Çözülen Soru: ${totalQToday} Soru (${correctToday} Doğru / ${totalQToday - correctToday} Yanlış)\n`;
+      }
+      if (upcomingExams.length > 0) {
+        textReport += `📊 Yaklaşan Sınavlar:\n`;
+        upcomingExams.forEach(e => {
+          textReport += `   - 🎯 ${e.subject || e.title || e.name}: ${e.date}\n`;
+        });
+      }
+      textReport += `💡 Koçun Değerlendirmesi: ${s.grade}. sınıf seviyesi için günlük hedefler ${pendingHw.length === 0 ? 'başarıyla tamamlandı.' : 'takip edilmelidir.'}\n\n`;
+
+      htmlReport += `
+        <div style="background:#f8faff;border:1.5px solid #cbd5e1;border-radius:10px;padding:12px;margin-bottom:12px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:8px;">
+            <div style="font-weight:900;font-size:.9rem;color:#1e40af;">
+              ${s.avatar} ${escH(s.name)} <span style="font-size:.75rem;color:#64748b;font-weight:700;">(${s.grade}. Sınıf)</span>
+            </div>
+            <div style="font-size:.7rem;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;font-weight:800;">
+              ${activeHours.length} Saat Plan
+            </div>
+          </div>
+          <div style="font-size:.78rem;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <strong>📝 Ödev Durumu:</strong><br>
+              <span style="color:#059669;">✅ ${doneHw.length} Tamam</span> · <span style="color:#dc2626;">⏳ ${pendingHw.length} Bekleyen</span>
+              ${pendingHw.length ? `<div style="font-size:.72rem;color:#475569;margin-top:3px;">${pendingHw.slice(0,3).map(h=>`• ${escH(h.title)}`).join('<br>')}</div>` : ''}
+            </div>
+            <div>
+              <strong>🔢 Soru & Sınav:</strong><br>
+              <span>${totalQToday > 0 ? `${totalQToday} soru (${correctToday}D)` : 'Bugün test girişi yok'}</span><br>
+              <span style="font-size:.72rem;color:#64748b;">${upcomingExams.length ? `🎯 ${upcomingExams.length} yaklaşan sınav` : '✨ Yakın sınav yok'}</span>
+            </div>
+          </div>
+          <div style="margin-top:8px;background:#ede9fe;color:#5b21b6;padding:6px 9px;border-radius:6px;font-size:.72rem;font-weight:700;">
+            🤖 <strong>Koç Tavsiyesi:</strong> ${pendingHw.length === 0 ? 'Harika bir çalışma günüydü! Dinlenme ve kitap okuma saati ayrılabilir.' : 'Kalan ödevlerin yarına hazır olması için kısa bir çalışma oturumu yapılması önerilir.'}
+          </div>
+        </div>
+      `;
+    });
+
+    textReport += `🔗 Canlı Takip Paneli: https://kmlyklmz-lab.github.io/okul-planlayici/\n`;
+    htmlReport += `
+        <div style="text-align:center;margin-top:10px;font-size:.72rem;color:#64748b;">
+          Google Firebase Gerçek Zamanlı Bulut Senkronizasyonu Aktiftir.
+        </div>
+      </div>
+    `;
+
+    return { text: textReport, html: htmlReport, studentsCount: students.length };
+  },
+
+  sendDailyReport(mode = 'manual', studentId = null) {
+    const report = this.generateAllStudentsReport();
+    const parentEmail = this.getParentEmail();
+    const now = new Date();
+    const subject = `🎒 Okul Asistanım - 20:30 Günlük Veli Özeti (${now.toLocaleDateString('tr-TR')})`;
+    const mailtoUrl = `mailto:${encodeURIComponent(parentEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(report.text)}`;
+
+    if (typeof AppDB !== 'undefined') {
+      AppDB.logActivity('VELI_RAPOR_GONDERIM', `Saat 20:30 veli özeti oluşturuldu (${report.studentsCount} öğrenci)`, `E-Posta: ${parentEmail}`);
+    }
+
+    // Interactive Modal popup for parent
+    const modalHtml = `
+      <div style="font-size:.8rem;display:flex;flex-direction:column;gap:12px;">
+        <div class="ai-card" style="background:#eff6ff;border-color:#bfdbfe;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <h4 style="color:#1e40af;margin:0;">📧 20:30 Günlük Veli Raporu</h4>
+            <span style="background:#10b981;color:#fff;font-size:.65rem;font-weight:900;padding:2px 7px;border-radius:12px;">${mode==='auto'?'⏰ Otomatik 20:30':'⚡ Anlık Gönderim'}</span>
+          </div>
+          <p style="font-size:.75rem;color:#1e3a8a;margin-top:4px;">
+            Öğrencilerinizin bugünkü tüm ders, ödev, soru çözümü ve koçluk değerlendirmeleri hazırlandı.
+          </p>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+            <label class="fl" style="margin:0;white-space:nowrap;">Veli E-Posta:</label>
+            <input type="email" id="parentDailyEmailInput" class="field" style="padding:5px 8px;font-size:.78rem;" value="${escH(parentEmail)}" onchange="ParentDailyReporter.setParentEmail(this.value)"/>
+          </div>
+        </div>
+
+        <div style="max-height:240px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:10px;padding:8px;background:#fff;">
+          ${report.html}
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <a href="${mailtoUrl}" target="_blank" class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;font-size:.78rem;">
+            📧 E-Posta Gönder (Mailto)
+          </a>
+          <button class="btn-login" style="margin-top:0;background:linear-gradient(135deg,#059669,#10b981);color:#fff;padding:9px;font-size:.78rem;" onclick="navigator.clipboard.writeText(\`${report.text.replace(/`/g, '\\`').replace(/\\/g, '\\\\')}\`);showToast('📋 Rapor panoya kopyalandı!','success');">
+            📋 Raporu Kopyala / WhatsApp
+          </button>
+        </div>
+      </div>
+    `;
+
+    openModal('📧 Günlük Veli E-Posta Özeti (20:30)', modalHtml);
+    showToast('📧 20:30 Veli Raporu hazırlandı!', 'success');
+  }
+};
+
 // Generate formatted WhatsApp summary for parents
 function copyParentSummaryReport(studentId) {
-  const s = getStudent(studentId);
-  if (!s) return;
-  const now = new Date();
-  const dayNames = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
-  const todayName = dayNames[now.getDay()];
-  const hw = s.homework || [];
-  const pendingHw = hw.filter(h => !h.completed);
-  const exams = s.exams || [];
-  const upcomingExams = exams.filter(e => e.date && new Date(e.date) >= new Date(now.toDateString()));
-
-  let text = `🎒 *Okul Asistanım - Günlük Veli Özeti*\n`;
-  text += `👤 *Öğrenci:* ${s.avatar} ${s.name} (${s.grade}. Sınıf)\n`;
-  text += `📅 *Tarih:* ${now.toLocaleDateString('tr-TR')} ${todayName}\n\n`;
-
-  text += `📝 *Ödev Durumu:*\n`;
-  if (pendingHw.length === 0) {
-    text += `✅ Harika! Bekleyen ödev bulunmuyor.\n`;
-  } else {
-    text += `⏳ Bekleyen ${pendingHw.length} ödev var:\n`;
-    pendingHw.slice(0, 5).forEach(h => {
-      text += `  • ${h.subject || 'Ders'}: ${h.title} (Son: ${h.dueDate || '-'})\n`;
-    });
-  }
-
-  text += `\n📊 *Yaklaşan Sınavlar:*\n`;
-  if (upcomingExams.length === 0) {
-    text += `✨ Yakın tarihte sınav görünmüyor.\n`;
-  } else {
-    upcomingExams.slice(0, 3).forEach(e => {
-      const diff = Math.ceil((new Date(e.date) - new Date(now.toDateString())) / (1000*60*60*24));
-      text += `  • ${e.subject || e.title}: ${e.date} (${diff === 0 ? 'Bugün!' : diff + ' gün kaldı'})\n`;
-    });
-  }
-
-  text += `\n🔗 *Canlı Takip:* https://kmlyklmz-lab.github.io/okul-planlayici/`;
-
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('📋 WhatsApp raporu panoya kopyalandı!', '#10b981');
-  }).catch(() => {
-    showToast('⚠️ Kopyalanamadı, izin veriniz.', '#ef4444');
-  });
+  ParentDailyReporter.sendDailyReport('manual', studentId);
 }
 
 // ─── DATABASE MODAL & CRUD LOGS ─────────────────────
@@ -1154,7 +1304,11 @@ function getLogActionMeta(action) {
     'SINAV_SILME': { icon: '🗑️', label: 'Sınav Silindi', color: '#b91c1c', bg: '#fee2e2' },
     'NOT_KAYIT': { icon: '🗒️', label: 'Not Kaydı', color: '#c2410c', bg: '#ffedd5' },
     'NOT_SILME': { icon: '🗑️', label: 'Not Silindi', color: '#b91c1c', bg: '#fee2e2' },
+    'CALISMA_KAYDI': { icon: '🔢', label: 'Soru & Çalışma', color: '#0d9488', bg: '#ccfbf1' },
+    'CALISMA_SILME': { icon: '🗑️', label: 'Çalışma Silindi', color: '#b91c1c', bg: '#fee2e2' },
     'PROGRAM_GUNCELLEME': { icon: '📅', label: 'Program Güncelleme', color: '#4338ca', bg: '#e0e7ff' },
+    'AI_ISLEM': { icon: '🤖', label: 'Yapay Zeka Koçu İşlemi', color: '#6d28d9', bg: '#ede9fe' },
+    'VELI_RAPOR_GONDERIM': { icon: '📧', label: '20:30 Veli Raporu', color: '#0369a1', bg: '#e0f2fe' },
     'YEDEK_ALINDI': { icon: '💾', label: 'Yedek İndirildi', color: '#047857', bg: '#d1fae5' },
     'YEDEK_YUKLENDI': { icon: '📥', label: 'Yedek Yüklendi', color: '#1d4ed8', bg: '#dbeafe' },
     'VERI_AKTARIMI': { icon: '🔄', label: 'Veri Aktarımı', color: '#0369a1', bg: '#e0f2fe' }
@@ -1330,12 +1484,19 @@ async function resetDbUI() {
 }
 
 // ─── INIT ────────────────────────────────
+if (typeof window !== 'undefined') {
+  window.ParentDailyReporter = ParentDailyReporter;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   if (typeof AppDB !== 'undefined' && AppDB.init) {
     await AppDB.init();
   }
   if (typeof CloudDB !== 'undefined' && CloudDB.init) {
     CloudDB.init();
+  }
+  if (typeof ParentDailyReporter !== 'undefined' && ParentDailyReporter.init) {
+    ParentDailyReporter.init();
   }
   renderAvatarPicker();
   renderLoginScreen();

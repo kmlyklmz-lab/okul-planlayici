@@ -1,6 +1,14 @@
 /* subjects.js — dersler sekmesi */
 
-function getSubjs() { const s=curStudent(); return s?s.subjects||[]:[];}
+function getSubjs() { 
+  const s = curStudent(); 
+  if (s && s.subjects && s.subjects.length) return s.subjects;
+  if (s) {
+    s.subjects = (typeof DEFAULT_SUBJECTS !== 'undefined') ? DEFAULT_SUBJECTS.map((sub, i) => ({ ...sub, id: 'def_' + i })) : [];
+    return s.subjects;
+  }
+  return (typeof DEFAULT_SUBJECTS !== 'undefined') ? DEFAULT_SUBJECTS.map((sub, i) => ({ ...sub, id: 'def_' + i })) : [];
+}
 function saveSubjs(arr) { const s=curStudent();if(!s)return;s.subjects=arr;updateStudent(s);}
 
 function renderSubjects() {
